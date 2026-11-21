@@ -10,6 +10,10 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculatePan
@@ -34,9 +38,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.SkipNext
-import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.SkipNext
+import androidx.compose.material.icons.rounded.SkipPrevious
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -85,7 +89,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
-private val BarColor = Color(0xE6101014)
+private val BarColor = Color(0xEB16161D)
 
 @Composable
 fun ReaderScreen(vm: AppViewModel, mangaId: String, chapterId: String) {
@@ -250,10 +254,12 @@ fun ReaderScreen(vm: AppViewModel, mangaId: String, chapterId: String) {
             modifier = Modifier.align(Alignment.TopCenter),
         ) {
             Row(
-                Modifier.fillMaxWidth().background(BarColor).windowInsetsPadding(WindowInsets.statusBars).padding(4.dp),
+                Modifier.fillMaxWidth()
+                    .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.92f), Color.Black.copy(alpha = 0.6f), Color.Transparent)))
+                    .windowInsetsPadding(WindowInsets.statusBars).padding(start = 4.dp, end = 4.dp, top = 4.dp, bottom = 24.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                IconButton(onClick = { vm.back() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = Color.White) }
+                IconButton(onClick = { vm.back() }) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back", tint = Color.White) }
                 Column(Modifier.weight(1f)) {
                     Text(manga.title, color = Color.White, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(chapter.name, color = Color.White.copy(alpha = 0.7f), style = MaterialTheme.typography.bodySmall, maxLines = 1)
@@ -268,10 +274,15 @@ fun ReaderScreen(vm: AppViewModel, mangaId: String, chapterId: String) {
             exit = slideOutVertically { it } + fadeOut(),
             modifier = Modifier.align(Alignment.BottomCenter),
         ) {
-            Column(Modifier.fillMaxWidth().background(BarColor).windowInsetsPadding(WindowInsets.navigationBars).padding(horizontal = 8.dp, vertical = 6.dp)) {
+            Column(
+                Modifier.windowInsetsPadding(WindowInsets.navigationBars).padding(12.dp).fillMaxWidth()
+                    .clip(RoundedCornerShape(24.dp)).background(BarColor)
+                    .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(24.dp))
+                    .padding(horizontal = 8.dp, vertical = 8.dp),
+            ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton(enabled = prev != null, onClick = { prev?.let { vm.replaceTop(Screen.Reader(mangaId, it.id)) } }) {
-                        Icon(Icons.Default.SkipPrevious, "Previous chapter", tint = if (prev != null) Color.White else Color.Gray)
+                        Icon(Icons.Rounded.SkipPrevious, "Previous chapter", tint = if (prev != null) Color.White else Color.Gray)
                     }
                     val pages = chapter.pages.size
                     var dragging by remember { mutableStateOf<Float?>(null) }
@@ -284,11 +295,14 @@ fun ReaderScreen(vm: AppViewModel, mangaId: String, chapterId: String) {
                         onValueChangeFinished = { dragging = null },
                         valueRange = 0f..(pages - 1).coerceAtLeast(1).toFloat(),
                         enabled = pages > 1,
-                        colors = SliderDefaults.colors(inactiveTrackColor = Color.White.copy(alpha = 0.25f)),
+                        colors = SliderDefaults.colors(
+                            thumbColor = Palette.Coral, activeTrackColor = Palette.Coral,
+                            inactiveTrackColor = Color.White.copy(alpha = 0.2f),
+                        ),
                         modifier = Modifier.weight(1f),
                     )
                     IconButton(enabled = next != null, onClick = { next?.let { vm.replaceTop(Screen.Reader(mangaId, it.id)) } }) {
-                        Icon(Icons.Default.SkipNext, "Next chapter", tint = if (next != null) Color.White else Color.Gray)
+                        Icon(Icons.Rounded.SkipNext, "Next chapter", tint = if (next != null) Color.White else Color.Gray)
                     }
                 }
                 Text(
@@ -331,7 +345,7 @@ private fun ChapterEnd(chapterName: String, nextName: String?, onNext: () -> Uni
     ) {
         Text("End of $chapterName", color = Color.White, style = MaterialTheme.typography.titleMedium)
         if (nextName != null) {
-            Button(onClick = onNext) { Text("Next: $nextName", maxLines = 1, overflow = TextOverflow.Ellipsis) }
+            GradientButton(onClick = onNext) { Text("Next: $nextName", maxLines = 1, overflow = TextOverflow.Ellipsis) }
         } else {
             Text("You're all caught up", color = Color.White.copy(alpha = 0.7f))
         }

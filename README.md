@@ -24,3 +24,7 @@ keyAlias=mangascroll
 keyPassword=...
 ```
 then run `./gradlew assembleRelease`. Without that file the release build is unsigned.
+
+## Credits
+- UI typeface: [Outfit](https://fonts.google.com/specimen/Outfit) via Google Fonts, SIL Open Font License (see `licenses/Outfit-OFL.txt`)
+- Icons: Material Symbols (Rounded)

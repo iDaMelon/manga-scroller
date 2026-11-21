@@ -7,6 +7,11 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -15,10 +20,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Archive
-import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.Image
-import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.rounded.Archive
+import androidx.compose.material.icons.rounded.Folder
+import androidx.compose.material.icons.rounded.Image
+import androidx.compose.material.icons.automirrored.rounded.MenuBook
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -82,35 +87,38 @@ enum class ImportKind { Images, Folder, Zip }
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ImportSheet(onDismiss: () -> Unit, onPick: (ImportKind) -> Unit) {
-    ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(Modifier.padding(bottom = 24.dp)) {
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = MaterialTheme.colorScheme.surface) {
+        Column(Modifier.padding(start = 20.dp, end = 20.dp, bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("Import", style = MaterialTheme.typography.headlineSmall)
             Text(
-                "Import from",
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+                "Pages are sorted by file name, so 01, 02 … 10 stay in order.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 6.dp),
             )
-            SheetOption(Icons.Default.Image, "Images", "Pick the pages — they're sorted by file name (01, 02, … 10)") {
-                onPick(ImportKind.Images)
-            }
-            SheetOption(Icons.Default.Folder, "Folder", "A folder of pages, or a folder with one sub-folder per chapter") {
-                onPick(ImportKind.Folder)
-            }
-            SheetOption(Icons.Default.Archive, "ZIP / CBZ", "One or more archives — each becomes a chapter") {
-                onPick(ImportKind.Zip)
-            }
+            SheetOption(Icons.Rounded.Image, Palette.Coral, "Images", "Pick the pages of one chapter") { onPick(ImportKind.Images) }
+            SheetOption(Icons.Rounded.Folder, Palette.Amber, "Folder", "A folder of pages, or one sub-folder per chapter") { onPick(ImportKind.Folder) }
+            SheetOption(Icons.Rounded.Archive, Palette.Violet, "ZIP / CBZ", "One or more archives, each becomes a chapter") { onPick(ImportKind.Zip) }
         }
     }
 }
 
 @Composable
-private fun SheetOption(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, sub: String, onClick: () -> Unit) {
-    ListItem(
-        headlineContent = { Text(title) },
-        supportingContent = { Text(sub) },
-        leadingContent = { Icon(icon, null) },
-        colors = ListItemDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent),
-        modifier = Modifier.clickable(onClick = onClick),
-    )
+private fun SheetOption(icon: androidx.compose.ui.graphics.vector.ImageVector, tint: Color, title: String, sub: String, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(MaterialTheme.colorScheme.surfaceVariant)
+            .clickable(onClick = onClick).padding(14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier.size(46.dp).clip(RoundedCornerShape(14.dp)).background(tint.copy(alpha = 0.16f)),
+            contentAlignment = Alignment.Center,
+        ) { Icon(icon, null, tint = tint) }
+        Column(Modifier.padding(start = 14.dp)) {
+            Text(title, style = MaterialTheme.typography.titleMedium)
+            Text(sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
 }
 
 /** Title / chapter-name prompt shown after picking, plus progress and error dialogs. */
@@ -146,7 +154,7 @@ fun ImportDialogs(vm: AppViewModel) {
                     }
                 }
             },
-            confirmButton = { TextButton(onClick = { vm.confirmImport(title, chapter) }) { Text("Import") } },
+            confirmButton = { GradientButton(onClick = { vm.confirmImport(title, chapter) }) { Text("Import") } },
             dismissButton = { TextButton(onClick = { vm.cancelPending() }) { Text("Cancel") } },
         )
     }
@@ -159,7 +167,11 @@ fun ImportDialogs(vm: AppViewModel) {
             text = {
                 Column {
                     if (s.total > 0) {
-                        LinearProgressIndicator(progress = { s.done.toFloat() / s.total }, modifier = Modifier.fillMaxWidth())
+                        LinearProgressIndicator(
+                            progress = { s.done.toFloat() / s.total },
+                            modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(50)),
+                            gapSize = 0.dp, drawStopIndicator = {},
+                        )
                         Spacer(Modifier.height(8.dp))
                         Text("${s.done} of ${s.total} images")
                     } else {
@@ -207,19 +219,30 @@ fun ConfirmDialog(title: String, message: String, confirm: String, onDismiss: ()
     )
 }
 
+/** Small in-memory cache so covers show instantly when coming back to a screen. */
+object CoverCache {
+    private val cache = android.util.LruCache<String, ImageBitmap>(64)
+    private fun key(file: File, version: Int) = "${file.path}#$version#${file.lastModified()}"
+    fun get(file: File, version: Int): ImageBitmap? = cache.get(key(file, version))
+    fun load(file: File, version: Int): ImageBitmap? =
+        get(file, version) ?: (if (file.exists()) BitmapFactory.decodeFile(file.path)?.asImageBitmap() else null)
+            ?.also { cache.put(key(file, version), it) }
+}
+
 @Composable
 fun CoverImage(file: File, version: Int, modifier: Modifier = Modifier) {
-    val bitmap by produceState<ImageBitmap?>(null, file.path, version) {
-        value = withContext(Dispatchers.IO) {
-            if (file.exists()) BitmapFactory.decodeFile(file.path)?.asImageBitmap() else null
-        }
+    val bitmap by produceState(CoverCache.get(file, version), file.path, version) {
+        if (value == null) value = withContext(Dispatchers.IO) { CoverCache.load(file, version) }
     }
-    Box(modifier.background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
+    Box(
+        modifier.background(Brush.linearGradient(listOf(Palette.CardHigh, Palette.Card))),
+        contentAlignment = Alignment.Center,
+    ) {
         val b = bitmap
         if (b != null) {
             Image(b, null, contentScale = ContentScale.Crop, modifier = Modifier.matchParentSize())
         } else {
-            Icon(Icons.AutoMirrored.Filled.MenuBook, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(32.dp))
+            Icon(Icons.AutoMirrored.Rounded.MenuBook, null, tint = Palette.TextDim.copy(alpha = 0.5f), modifier = Modifier.size(32.dp))
         }
     }
 }
