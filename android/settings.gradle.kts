@@ -12,6 +12,5 @@ dependencyResolutionManagement {
         mavenCentral()
     }
 }
-rootProject.name = "MangaScroll"
+rootProject.name = "MangaScroll-Android"
 include(":app")
-include(":desktop")
