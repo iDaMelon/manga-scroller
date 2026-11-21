@@ -25,6 +25,15 @@ keyPassword=...
 ```
 then run `./gradlew assembleRelease`. Without that file the release build is unsigned.
 
+## Windows version
+The `desktop/` module is the same app built with Compose for Desktop, with mouse-wheel and keyboard
+reading, Ctrl+wheel zoom, full screen (F11), and drag-and-drop importing.
+
+- Run it locally: `./gradlew :desktop:run`
+- Build the portable Windows zip (`MangaScroll.exe` + bundled slim Java runtime), from Linux/macOS:
+  `desktop/packaging/build-windows.sh` (needs `zig` for the launcher; see the script header)
+- Windows library location: `%APPDATA%\MangaScroll` (override with the `MANGASCROLL_DIR` environment variable)
+
 ## Credits
 - UI typeface: [Outfit](https://fonts.google.com/specimen/Outfit) via Google Fonts, SIL Open Font License (see `licenses/Outfit-OFL.txt`)
 - Icons: Material Symbols (Rounded)

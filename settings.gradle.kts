@@ -14,3 +14,4 @@ dependencyResolutionManagement {
 }
 rootProject.name = "MangaScroll"
 include(":app")
+include(":desktop")
