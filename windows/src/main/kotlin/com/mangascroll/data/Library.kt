@@ -12,7 +12,7 @@ import org.json.JSONObject
 import java.io.File
 
 /** Stores every imported manga in the app's data folder, indexed by library.json. */
-class Library(baseDir: File) {
+class Library(val baseDir: File) {
 
     val root = File(baseDir, "library").apply { mkdirs() }
     private val index = File(baseDir, "library.json")
@@ -84,7 +84,7 @@ class Library(baseDir: File) {
                         put(JSONObject().apply {
                             put("id", c.id); put("name", c.name); put("added", c.added)
                             put("posIndex", c.posIndex); put("posOffset", c.posOffset)
-                            put("progress", c.progress.toDouble()); put("read", c.read)
+                            put("progress", c.progress.toDouble()); put("read", c.read); put("aiReplaced", c.aiReplaced)
                             put("pages", JSONArray().apply {
                                 c.pages.forEach { p -> put(JSONObject().put("f", p.file).put("w", p.w).put("h", p.h)) }
                             })
@@ -119,6 +119,7 @@ class Library(baseDir: File) {
                         posOffset = c.optInt("posOffset"),
                         progress = c.optDouble("progress", 0.0).toFloat(),
                         read = c.optBoolean("read"),
+                        aiReplaced = c.optBoolean("aiReplaced"),
                         pages = (0 until pArr.length()).map { k ->
                             val p = pArr.getJSONObject(k)
                             Page(p.getString("f"), p.getInt("w"), p.getInt("h"))

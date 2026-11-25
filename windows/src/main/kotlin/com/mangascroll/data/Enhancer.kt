@@ -52,7 +52,12 @@ data class EnhanceStatus(
  * Pages are cut into overlapping strips (very tall pages are too big to upscale in one go),
  * upscaled 4x, stitched back together, scaled to 1.5x and saved as WebP.
  */
-class Enhancer(private val library: Library, scope: CoroutineScope) {
+class Enhancer(
+    private val library: Library,
+    scope: CoroutineScope,
+    /** called (on a background thread) after a chapter finishes enhancing */
+    private val onChapterDone: (mangaId: String, chapterId: String) -> Unit = { _, _ -> },
+) {
 
     val engine: File? = findEngine()
     val available: Boolean get() = engine != null
@@ -90,8 +95,9 @@ class Enhancer(private val library: Library, scope: CoroutineScope) {
     fun request(mangaId: String, chapterIds: List<String>, front: Boolean = false) {
         if (engine == null) return
         synchronized(lock) {
+            val replaced = library.find(mangaId)?.chapters?.filter { it.aiReplaced }?.map { it.id }?.toSet().orEmpty()
             val jobs = chapterIds
-                .filter { !Enhanced.isDone(library, mangaId, it) }
+                .filter { it !in replaced && !Enhanced.isDone(library, mangaId, it) }
                 .map { Job(mangaId, it) }
                 .filter { it != current }
             queue.removeAll(jobs.toSet())
@@ -105,6 +111,17 @@ class Enhancer(private val library: Library, scope: CoroutineScope) {
         queue.removeAll { it.mangaId == mangaId && (chapterIds == null || it.chapterId in chapterIds) }
         current?.let { if (it.mangaId == mangaId && (chapterIds == null || it.chapterId in chapterIds)) cancelCurrent = true }
     }
+
+    /** Stops everything (used before moving the library). */
+    fun cancelAll() = synchronized(lock) {
+        queue.clear()
+        if (current != null) cancelCurrent = true
+    }
+
+    val idle: Boolean get() = synchronized(lock) { current == null && queue.isEmpty() }
+
+    /** Tells screens that enhanced/replaced pages changed. */
+    fun changed() { _version.value++ }
 
     fun delete(mangaId: String, chapterIds: Collection<String>? = null) {
         cancel(mangaId, chapterIds?.toSet())
@@ -150,7 +167,7 @@ class Enhancer(private val library: Library, scope: CoroutineScope) {
     private fun enhanceChapter(job: Job) {
         val manga = library.find(job.mangaId) ?: return
         val chapter = manga.chapters.firstOrNull { it.id == job.chapterId } ?: return
-        if (Enhanced.isDone(library, job.mangaId, job.chapterId)) return
+        if (chapter.aiReplaced || Enhanced.isDone(library, job.mangaId, job.chapterId)) return
         val exe = engine ?: return
         Images.ensureLoaded()
 
@@ -212,6 +229,7 @@ class Enhancer(private val library: Library, scope: CoroutineScope) {
         }
         File(dest, ".done").writeText(MODEL)
         _version.value++
+        runCatching { onChapterDone(job.mangaId, job.chapterId) }
     }
 
     private data class Strip(val s0: Int, val s1: Int, val c0: Int, val c1: Int)

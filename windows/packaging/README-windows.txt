@@ -18,6 +18,8 @@ AI enhance
   next 2) or "Whole manga". It runs on your graphics card and saves sharper 1.5x copies
   of the pages; your originals are kept. Use "Delete enhanced pages" to free the space.
   In the reader, the "AI on/off" button (or the A key) switches between enhanced and original.
+  Settings > Storage can replace the originals with the AI pages to save space (this deletes
+  the originals).
   If it fails, update your graphics driver (it needs Vulkan, which current AMD, NVIDIA
   and Intel drivers include).
 
@@ -31,4 +33,5 @@ Reading
   Esc                               exit full screen / go back
   Click the page                    keep the controls visible
 
-Your library is stored in %APPDATA%\MangaScroll.
+Your library is stored in %APPDATA%\MangaScroll unless you pick another folder in
+Settings > Storage > Library folder.

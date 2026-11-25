@@ -60,12 +60,19 @@ import kotlinx.coroutines.delay
 import java.io.File
 import java.net.URI
 
-const val APP_VERSION = "1.3"
+const val APP_VERSION = "1.4"
 
 fun main() {
     // MANGASCROLL_DIR lets you keep the library somewhere else (e.g. a portable drive)
-    val dir = System.getenv("MANGASCROLL_DIR")?.takeIf { it.isNotBlank() }?.let { File(it).apply { mkdirs() } }
-    runApp(AppViewModel(Library(dir ?: Library.defaultDir())))
+    val env = System.getenv("MANGASCROLL_DIR")?.takeIf { it.isNotBlank() }?.let { File(it).apply { mkdirs() } }
+    // the folder picked in Settings > Storage (skipped if it's gone, e.g. an unplugged drive)
+    val saved = com.mangascroll.data.LibraryMover.savedDir()
+    val savedOk = saved?.takeIf { it.isDirectory || it.mkdirs() }
+    val vm = AppViewModel(Library(env ?: savedOk ?: Library.defaultDir()))
+    if (env == null && saved != null && savedOk == null) {
+        vm.toast = "Library folder ${saved.path} isn't available, using the default one"
+    }
+    runApp(vm)
 }
 
 fun runApp(vm: AppViewModel) {

@@ -346,6 +346,7 @@ fun ReaderScreen(vm: AppViewModel, mangaId: String, chapterId: String) {
                     if (vm.enhancer.available) {
                         val busy = aiStatus?.takeIf { it.mangaId == mangaId && it.chapterId == chapterId }
                         val label = when {
+                            chapter.aiReplaced -> "AI pages"
                             busy != null -> "AI ${if (busy.total > 0) busy.done * 100 / busy.total else 0}%"
                             aiReady -> if (vm.showEnhanced) "AI on" else "AI off"
                             manga.enhance != "off" -> "AI queued"

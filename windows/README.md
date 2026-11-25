@@ -19,5 +19,7 @@ From this folder:
   (needs JDK 17+, `zig` for the small launcher exe; it downloads Temurin JDK 17 to make the runtime with jlink, and the Real-ESRGAN engine)
   → `build/windows/MangaScroll-<version>-windows-x64.zip`
 
-The library is stored in `%APPDATA%\MangaScroll` (override with the `MANGASCROLL_DIR` environment variable).
+The library is stored in `%APPDATA%\MangaScroll` by default. Settings > Storage can move it to any folder (or open
+another library), and the `MANGASCROLL_DIR` environment variable overrides both. Storage can also replace original
+pages with their AI-enhanced versions (now, or automatically after each chapter) to save space.
 Keyboard shortcuts are listed in `packaging/README-windows.txt`, which ships inside the zip.

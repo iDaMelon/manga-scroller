@@ -45,6 +45,8 @@ class AppSettings {
     var defaultSort by Str("defaultSort", "Recent")
     /** AI enhance mode given to newly imported manga: "off", "reading" or "all" */
     var defaultEnhance by Str("defaultEnhance", "off")
+    /** after a chapter is enhanced, delete its originals and keep only the AI pages */
+    var replaceOriginals by Bool("replaceOriginals", false)
 
     // ----- reader -----
     var readerBg by Str("readerBg", "black")

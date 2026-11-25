@@ -11,6 +11,8 @@ data class Chapter(
     val posOffset: Int = 0,
     val progress: Float = 0f,
     val read: Boolean = false,
+    /** the original pages were replaced by their AI-enhanced versions */
+    val aiReplaced: Boolean = false,
 )
 
 data class Manga(

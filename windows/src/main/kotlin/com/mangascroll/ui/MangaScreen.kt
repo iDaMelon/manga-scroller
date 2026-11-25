@@ -150,7 +150,7 @@ fun MangaScreen(vm: AppViewModel, mangaId: String) {
                 val ai = when {
                     aiStatus?.let { it.mangaId == m.id && it.chapterId == c.id } == true ->
                         aiStatus!!.let { if (it.total > 0) "AI ${it.done * 100 / it.total}%" else "AI …" }
-                    remember(c.id, aiVersion) { Enhanced.isDone(vm.library, m.id, c.id) } -> "AI"
+                    c.aiReplaced || remember(c.id, aiVersion) { Enhanced.isDone(vm.library, m.id, c.id) } -> "AI"
                     else -> null
                 }
                 ChapterRow(
@@ -306,7 +306,7 @@ private fun ChapterRow(
 private fun AiCard(vm: AppViewModel, m: com.mangascroll.data.Manga) {
     val status by vm.enhancer.status.collectAsState()
     val version by vm.enhancer.version.collectAsState()
-    val done = remember(m.chapters, version) { m.chapters.count { Enhanced.isDone(vm.library, m.id, it.id) } }
+    val done = remember(m.chapters, version) { m.chapters.count { it.aiReplaced || Enhanced.isDone(vm.library, m.id, it.id) } }
     val bytes by produceState(0L, m.id, version) {
         value = withContext(Dispatchers.IO) { Enhanced.sizeBytes(vm.library, m.id) }
     }

@@ -53,6 +53,13 @@ import androidx.compose.material.icons.rounded.Storage
 import androidx.compose.material.icons.rounded.TextFields
 import androidx.compose.material.icons.rounded.ViewAgenda
 import androidx.compose.material.icons.rounded.VisibilityOff
+import androidx.compose.material.icons.rounded.SwapHoriz
+import androidx.compose.material.icons.rounded.DeleteSweep
+import androidx.compose.material.icons.rounded.Folder
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.LinearProgressIndicator
+import com.mangascroll.data.LibraryMover
+import javax.swing.JFileChooser
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -511,22 +518,49 @@ private fun StoragePage(vm: AppViewModel) {
         val aiBytes by produceState(0L, all.size, aiVersion) {
             value = withContext(Dispatchers.IO) { all.sumOf { com.mangascroll.data.Enhanced.sizeBytes(vm.library, it.id) } }
         }
+        val readyToReplace = remember(all, aiVersion) {
+            all.sumOf { m -> m.chapters.count { !it.aiReplaced && com.mangascroll.data.Enhanced.isDone(vm.library, m.id, it.id) } }
+        }
+        val replacedCount = all.sumOf { m -> m.chapters.count { it.aiReplaced } }
         var confirm by remember { mutableStateOf(false) }
+        var confirmReplace by remember { mutableStateOf(false) }
+        var confirmAuto by remember { mutableStateOf(false) }
         SettingGroup("AI enhanced pages") {
-            Row(
-                Modifier.fillMaxWidth().clickable(enabled = aiBytes > 0) { confirm = true }.padding(horizontal = 20.dp, vertical = 14.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(Icons.Rounded.AutoAwesome, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                Column(Modifier.padding(start = 16.dp)) {
-                    Text("Delete all enhanced pages", style = MaterialTheme.typography.titleMedium)
-                    Text("${formatSize(aiBytes)} used · originals are kept · turns AI enhance off everywhere", style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
+            ActionRow(
+                Icons.Rounded.SwapHoriz, "Replace originals with AI pages",
+                if (readyToReplace > 0) "$readyToReplace enhanced chapter${if (readyToReplace == 1) "" else "s"} ready · the originals are deleted to save space"
+                else "No enhanced chapters waiting" + if (replacedCount > 0) " · $replacedCount already replaced" else "",
+                enabled = readyToReplace > 0,
+            ) { confirmReplace = true }
+            ToggleRow(
+                Icons.Rounded.AutoAwesome, "Replace automatically",
+                "After a chapter is enhanced, keep only the AI pages", vm.settings.replaceOriginals,
+            ) { on -> if (on) confirmAuto = true else vm.settings.replaceOriginals = false }
+            ActionRow(
+                Icons.Rounded.DeleteSweep, "Delete all enhanced pages",
+                "${formatSize(aiBytes)} used · originals are kept · turns AI enhance off everywhere",
+                enabled = aiBytes > 0,
+            ) { confirm = true }
         }
         if (confirm) ConfirmDialog("Delete all enhanced pages?", "Frees ${formatSize(aiBytes)}. Your original pages stay.", "Delete",
             onDismiss = { confirm = false }) { vm.deleteAllEnhanced() }
+        if (confirmReplace) ConfirmDialog(
+            "Replace originals?",
+            "$readyToReplace chapter${if (readyToReplace == 1) "" else "s"} will keep only the AI-enhanced pages. " +
+                "The original pages are deleted and can't be brought back unless you import them again.",
+            "Replace",
+            onDismiss = { confirmReplace = false },
+        ) { vm.replaceAllNow() }
+        if (confirmAuto) ConfirmDialog(
+            "Replace originals automatically?",
+            "From now on, each chapter's original pages are deleted as soon as its AI version is finished. " +
+                "This saves space, but the originals can't be brought back unless you import them again.",
+            "Turn on",
+            onDismiss = { confirmAuto = false },
+        ) { vm.settings.replaceOriginals = true }
+
+        LibraryFolderGroup(vm)
+
         SettingGroup("Maintenance") {
             Row(
                 Modifier.fillMaxWidth().clickable { vm.rebuildCovers() }.padding(horizontal = 20.dp, vertical = 14.dp),
@@ -540,6 +574,97 @@ private fun StoragePage(vm: AppViewModel) {
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ActionRow(icon: ImageVector, title: String, subtitle: String, enabled: Boolean = true, onClick: () -> Unit) {
+    val c = MaterialTheme.colorScheme
+    Row(
+        Modifier.fillMaxWidth().clickable(enabled = enabled, onClick = onClick).padding(horizontal = 20.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, null, tint = if (enabled) c.onSurfaceVariant else c.onSurfaceVariant.copy(alpha = 0.4f))
+        Column(Modifier.padding(start = 16.dp)) {
+            Text(title, style = MaterialTheme.typography.titleMedium, color = if (enabled) c.onSurface else c.onSurface.copy(alpha = 0.45f))
+            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = c.onSurfaceVariant)
+        }
+    }
+}
+
+/** Where the library lives, with a button to move it or open another one. */
+@Composable
+private fun LibraryFolderGroup(vm: AppViewModel) {
+    val c = MaterialTheme.colorScheme
+    val current = vm.library.baseDir
+    val fromEnv = !System.getenv("MANGASCROLL_DIR").isNullOrBlank()
+    var target by remember { mutableStateOf<java.io.File?>(null) }
+    val size by produceState(-1L, current) { value = withContext(Dispatchers.IO) { LibraryMover.sizeOf(current) } }
+
+    SettingGroup("Library folder") {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Rounded.Folder, null, tint = c.onSurfaceVariant)
+            Column(Modifier.weight(1f).padding(horizontal = 16.dp)) {
+                Text("Your manga are saved in", style = MaterialTheme.typography.titleMedium)
+                Text(current.absolutePath, style = MaterialTheme.typography.bodySmall, color = c.onSurfaceVariant)
+                if (fromEnv) Text("Set by the MANGASCROLL_DIR environment variable, which overrides this setting",
+                    style = MaterialTheme.typography.bodySmall, color = c.error)
+            }
+            GradientButton(onClick = {
+                val chooser = JFileChooser(current).apply {
+                    dialogTitle = "Choose where MangaScroll keeps your manga"
+                    fileSelectionMode = JFileChooser.DIRECTORIES_ONLY
+                }
+                if (chooser.showOpenDialog(Pickers.owner) == JFileChooser.APPROVE_OPTION) {
+                    val dir = chooser.selectedFile
+                    if (dir.absoluteFile.normalize() == current.absoluteFile.normalize()) vm.toast = "That's already the library folder"
+                    else target = dir
+                }
+            }, enabled = !fromEnv) { Text("Change") }
+        }
+        Text(
+            "Moving keeps everything: pages, AI pages, covers and reading progress. A different drive takes longer because every file is copied.",
+            style = MaterialTheme.typography.bodySmall, color = c.onSurfaceVariant,
+            modifier = Modifier.padding(start = 60.dp, end = 20.dp, bottom = 10.dp),
+        )
+    }
+
+    target?.let { dir ->
+        if (LibraryMover.hasLibrary(dir)) {
+            val n = remember(dir) { LibraryMover.countManga(dir) }
+            ConfirmDialog(
+                "Open the library in this folder?",
+                "${dir.absolutePath} already has a MangaScroll library ($n manga). MangaScroll will restart and use it. " +
+                    "Your current library stays where it is.",
+                "Open it",
+                onDismiss = { target = null },
+            ) { vm.switchLibrary(dir) }
+        } else {
+            val free = remember(dir) { dir.usableSpace }
+            val tooBig = size > 0 && free in 1 until size && dir.toPath().root != current.toPath().root
+            ConfirmDialog(
+                "Move your library?",
+                if (tooBig) "There isn't enough space on that drive: the library is ${formatSize(size)} and only ${formatSize(free)} is free."
+                else "Your library (${if (size < 0) "measuring…" else formatSize(size)}) moves to ${dir.absolutePath}, and MangaScroll restarts when it's done.",
+                if (tooBig) "OK" else "Move",
+                onDismiss = { target = null },
+            ) { if (!tooBig) vm.moveLibrary(dir) }
+        }
+    }
+
+    vm.moveStatus?.let { status ->
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text("Library folder") },
+            text = {
+                Column {
+                    LinearProgressIndicator(Modifier.fillMaxWidth())
+                    Spacer(Modifier.height(10.dp))
+                    Text(status)
+                }
+            },
+            confirmButton = {},
+        )
     }
 }
 

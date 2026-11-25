@@ -5,6 +5,8 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.mangascroll.data.Enhancer
+import com.mangascroll.data.LibraryMover
+import com.mangascroll.data.Replacer
 import com.mangascroll.data.ImportSource
 import com.mangascroll.data.Importer
 import com.mangascroll.data.Library
@@ -52,7 +54,16 @@ class AppViewModel(val library: Library) {
     val settings = AppSettings()
 
     /** Runs the AI upscaler in the background. */
-    val enhancer = Enhancer(library, viewModelScope)
+    val enhancer: Enhancer = Enhancer(library, viewModelScope) { mangaId, chapterId ->
+        if (settings.replaceOriginals) viewModelScope.launch {
+            Replacer.replace(library, mangaId, chapterId)
+            enhancer.changed()
+        }
+    }
+
+    /** Progress text while the library folder is being moved (blocks the UI). */
+    var moveStatus by mutableStateOf<String?>(null)
+        private set
 
     /** Reader shows AI-enhanced pages when they exist (toggle in the reader). */
     var showEnhanced by mutableStateOf(prefs.getBoolean("showEnhanced", true))
@@ -135,6 +146,53 @@ class AppViewModel(val library: Library) {
         val old = m.chapters.take((i - 2).coerceAtLeast(0)).map { it.id }
             .filter { com.mangascroll.data.Enhanced.isDone(library, m.id, it) }
         if (old.isNotEmpty()) viewModelScope.launch(Dispatchers.IO) { enhancer.delete(m.id, old) }
+    }
+
+    /** Replaces originals with AI pages for every fully enhanced chapter. */
+    fun replaceAllNow() = viewModelScope.launch {
+        var count = 0
+        var freed = 0L
+        library.items.value.forEach { m ->
+            m.chapters.forEach { c ->
+                Replacer.replace(library, m.id, c.id)?.let { count++; freed += it }
+            }
+        }
+        enhancer.changed()
+        toast = if (count == 0) "No enhanced chapters to replace" else
+            "Replaced $count chapter${if (count == 1) "" else "s"} · freed ${formatSize(freed.coerceAtLeast(0))}"
+    }
+
+    /** Moves the whole library into [target], then restarts the app there. */
+    fun moveLibrary(target: java.io.File) = viewModelScope.launch {
+        try {
+            moveStatus = "Stopping AI enhance…"
+            enhancer.cancelAll()
+            withTimeoutOrNull(15_000) { while (!enhancer.idle) kotlinx.coroutines.delay(200) }
+            flush()
+            moveStatus = "Moving your library…"
+            withContext(Dispatchers.IO) {
+                LibraryMover.move(library.baseDir, target) { done, total -> moveStatus = "Copying files… $done of $total" }
+            }
+            LibraryMover.remember(target)
+            restart()
+        } catch (e: Throwable) {
+            moveStatus = null
+            toast = "Couldn't move the library: ${e.message ?: e.javaClass.simpleName}"
+        }
+    }
+
+    /** Opens the library that's already in [target] (the current one stays where it is). */
+    fun switchLibrary(target: java.io.File) {
+        flush()
+        LibraryMover.remember(target)
+        restart()
+    }
+
+    private fun restart() {
+        moveStatus = "Restarting…"
+        if (LibraryMover.relaunch()) kotlin.system.exitProcess(0)
+        moveStatus = null
+        toast = "Restart MangaScroll to open the new library folder"
     }
 
     fun deleteEnhanced(mangaId: String) = viewModelScope.launch {
