@@ -20,6 +20,8 @@ data class Manga(
     val lastRead: Long = 0L,
     val lastChapterId: String? = null,
     val chapters: List<Chapter> = emptyList(),
+    /** AI enhance mode: "off", "reading" (current + next chapters) or "all". */
+    val enhance: String = "off",
 ) {
     val pageCount: Int get() = chapters.sumOf { it.pages.size }
     val readCount: Int get() = chapters.count { it.read }

@@ -13,7 +13,7 @@ java {
 }
 kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } }
 
-val appVersion = "1.1.0"
+val appVersion = "1.2.0"
 
 // Windows build: same code, but with the Windows Skia native libraries.
 val windowsRuntime: Configuration by configurations.creating {

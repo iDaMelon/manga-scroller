@@ -78,6 +78,7 @@ class Library(baseDir: File) {
             arr.put(JSONObject().apply {
                 put("id", m.id); put("title", m.title); put("created", m.created)
                 put("lastRead", m.lastRead); put("lastChapter", m.lastChapterId ?: JSONObject.NULL)
+                put("enhance", m.enhance)
                 put("chapters", JSONArray().apply {
                     m.chapters.forEach { c ->
                         put(JSONObject().apply {
@@ -106,6 +107,7 @@ class Library(baseDir: File) {
                 created = o.optLong("created"),
                 lastRead = o.optLong("lastRead"),
                 lastChapterId = if (o.isNull("lastChapter")) null else o.optString("lastChapter"),
+                enhance = o.optString("enhance", "off"),
                 chapters = (0 until chArr.length()).map { j ->
                     val c = chArr.getJSONObject(j)
                     val pArr = c.optJSONArray("pages") ?: JSONArray()

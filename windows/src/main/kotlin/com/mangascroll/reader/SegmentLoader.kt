@@ -2,6 +2,14 @@ package com.mangascroll.reader
 
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.toComposeImageBitmap
+import org.jetbrains.skia.FilterMipmap
+import org.jetbrains.skia.FilterMode
+import org.jetbrains.skia.Image
+import org.jetbrains.skia.MipmapMode
+import org.jetbrains.skia.Rect
+import org.jetbrains.skia.SamplingMode
+import org.jetbrains.skia.Surface
+import kotlin.math.roundToInt
 import com.mangascroll.data.Images
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -42,43 +50,75 @@ fun buildSegments(pages: List<Triple<File, Int, Int>>): Pair<List<Segment>, IntA
     return out to starts
 }
 
-class SegmentLoader {
+/**
+ * Decodes a page once and draws all of its slices at exactly the on-screen width,
+ * with a cubic (Mitchell) filter: sharper than plain bilinear stretching.
+ */
+class SegmentLoader(private val segments: List<Segment>) {
     private val maxBytes = Runtime.getRuntime().maxMemory() / 4
 
-    private class Entry(val bitmap: ImageBitmap, val sample: Int, val bytes: Long)
+    private class Entry(val bitmap: ImageBitmap, val width: Int, val bytes: Long)
 
     private val lock = Any()
     private var used = 0L
     private val cache = LinkedHashMap<String, Entry>(64, 0.75f, true)
+    private val byPage: Map<Int, List<Segment>> = segments.groupBy { it.pageIndex }
+    private val pageLocks = HashMap<Int, Any>()
 
     @OptIn(ExperimentalCoroutinesApi::class)
     private val dispatcher: CoroutineDispatcher = Dispatchers.IO.limitedParallelism(3)
 
-    private fun sampleFor(srcW: Int, targetWidth: Int): Int {
-        var s = 1
-        while (srcW / (s * 2) >= targetWidth) s *= 2
-        return s
-    }
-
-    /** A cached bitmap that is sharp enough for [targetWidth], if any. */
+    /** A cached bitmap made for exactly [targetWidth], if any. */
     fun cached(seg: Segment, targetWidth: Int): ImageBitmap? = synchronized(lock) {
-        cache[seg.key]?.takeIf { it.sample <= sampleFor(seg.srcW, targetWidth) }?.bitmap
+        cache[seg.key]?.takeIf { it.width == targetWidth }?.bitmap
     }
 
-    /** Any cached bitmap (even a blurrier one) to show while a sharper one loads. */
+    /** Any cached bitmap (maybe for another zoom level) to show while the right one loads. */
     fun anyCached(seg: Segment): ImageBitmap? = synchronized(lock) { cache[seg.key]?.bitmap }
 
     suspend fun load(seg: Segment, targetWidth: Int): ImageBitmap? {
         cached(seg, targetWidth)?.let { return it }
         return withContext(dispatcher) {
-            cached(seg, targetWidth) ?: run {
-                val sample = sampleFor(seg.srcW, targetWidth.coerceAtLeast(1))
-                val img = Images.readRegion(seg.file, seg.srcW, seg.top, seg.bottom, sample) ?: return@run null
-                val bmp = img.toComposeImageBitmap()
-                put(seg.key, Entry(bmp, sample, img.width.toLong() * img.height * 4))
-                bmp
+            val pageLock = synchronized(lock) { pageLocks.getOrPut(seg.pageIndex) { Any() } }
+            synchronized(pageLock) {
+                cached(seg, targetWidth) ?: run {
+                    runCatching { decodePage(seg, targetWidth) }
+                    cached(seg, targetWidth)
+                }
             }
         }
+    }
+
+    private fun decodePage(seg: Segment, targetWidth: Int) {
+        val pageSegs = byPage[seg.pageIndex] ?: listOf(seg)
+        val tw = targetWidth.coerceAtLeast(1)
+        val image = runCatching { Image.makeFromEncoded(seg.file.readBytes()) }.getOrNull()
+        if (image == null) {
+            // formats Skia can't read: fall back to ImageIO for this slice only
+            val sample = generateSequence(1) { it * 2 }.takeWhile { seg.srcW / (it * 2) >= tw }.last()
+            Images.readRegion(seg.file, seg.srcW, seg.top, seg.bottom, sample)?.let { img ->
+                put(seg.key, Entry(img.toComposeImageBitmap(), tw, img.width.toLong() * img.height * 4))
+            }
+            return
+        }
+        val scale = tw.toFloat() / image.width
+        val sampling: SamplingMode = if (scale < 0.5f) FilterMipmap(FilterMode.LINEAR, MipmapMode.LINEAR) else SamplingMode.MITCHELL
+        // the file may differ slightly from the recorded size; map rows proportionally
+        val rowScale = image.height.toFloat() / seg.srcH
+        for (s in pageSegs) {
+            val th = ((s.bottom - s.top) * scale * rowScale).roundToInt().coerceAtLeast(1)
+            val surface = Surface.makeRasterN32Premul(tw, th)
+            surface.canvas.drawImageRect(
+                image,
+                Rect.makeLTRB(0f, s.top * rowScale, image.width.toFloat(), s.bottom * rowScale),
+                Rect.makeWH(tw.toFloat(), th.toFloat()),
+                sampling, null, false,
+            )
+            val snap = surface.makeImageSnapshot()
+            put(s.key, Entry(snap.toComposeImageBitmap(), tw, tw.toLong() * th * 4))
+            surface.close()
+        }
+        image.close()
     }
 
     private fun put(key: String, e: Entry) = synchronized(lock) {

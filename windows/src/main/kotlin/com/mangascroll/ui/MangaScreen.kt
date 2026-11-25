@@ -52,6 +52,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.mangascroll.data.Chapter
+import com.mangascroll.data.Enhanced
+import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.runtime.produceState
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @Composable
 fun MangaScreen(vm: AppViewModel, mangaId: String) {
@@ -64,6 +69,8 @@ fun MangaScreen(vm: AppViewModel, mangaId: String) {
     var renamingChapter by remember { mutableStateOf<Chapter?>(null) }
     var deletingChapter by remember { mutableStateOf<Chapter?>(null) }
     val cover = vm.library.coverFile(m.id)
+    val aiStatus by vm.enhancer.status.collectAsState()
+    val aiVersion by vm.enhancer.version.collectAsState()
 
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         LazyColumn(
@@ -123,6 +130,8 @@ fun MangaScreen(vm: AppViewModel, mangaId: String) {
                 }
             }
 
+            item { AiCard(vm, m) }
+
             // ---------- chapters header ----------
             item {
                 Row(
@@ -138,7 +147,14 @@ fun MangaScreen(vm: AppViewModel, mangaId: String) {
             }
 
             itemsIndexed(m.chapters, key = { _, c -> c.id }) { i, c ->
+                val ai = when {
+                    aiStatus?.let { it.mangaId == m.id && it.chapterId == c.id } == true ->
+                        aiStatus!!.let { if (it.total > 0) "AI ${it.done * 100 / it.total}%" else "AI …" }
+                    remember(c.id, aiVersion) { Enhanced.isDone(vm.library, m.id, c.id) } -> "AI"
+                    else -> null
+                }
                 ChapterRow(
+                    ai = ai,
                     number = i + 1,
                     c = c,
                     isCurrent = c.id == m.lastChapterId,
@@ -200,6 +216,7 @@ private fun StatPill(text: String) {
 
 @Composable
 private fun ChapterRow(
+    ai: String?,
     number: Int,
     c: Chapter,
     isCurrent: Boolean,
@@ -254,11 +271,23 @@ private fun ChapterRow(
                 c.progress > 0f -> "${(c.progress * 100).toInt()}% read"
                 else -> "New"
             }
-            Text(
-                "${c.pages.size} pages · $state",
-                style = MaterialTheme.typography.bodySmall,
-                color = if (!c.read && c.progress == 0f) Palette.Amber else MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "${c.pages.size} pages · $state",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (!c.read && c.progress == 0f) Palette.Amber else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (ai != null) {
+                    Text(
+                        ai,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (ai == "AI") Color.White else Palette.Amber,
+                        modifier = Modifier.padding(start = 8.dp).clip(RoundedCornerShape(50))
+                            .background(if (ai == "AI") Palette.SunsetH else Brush.linearGradient(listOf(Palette.Amber.copy(alpha = 0.15f), Palette.Amber.copy(alpha = 0.15f))))
+                            .padding(horizontal = 7.dp, vertical = 1.dp),
+                    )
+                }
+            }
         }
         Box {
             IconButton(onClick = { menu = true }) {
@@ -271,4 +300,94 @@ private fun ChapterRow(
             }
         }
     }
+}
+
+
+@Composable
+private fun AiCard(vm: AppViewModel, m: com.mangascroll.data.Manga) {
+    val status by vm.enhancer.status.collectAsState()
+    val version by vm.enhancer.version.collectAsState()
+    val done = remember(m.chapters, version) { m.chapters.count { Enhanced.isDone(vm.library, m.id, it.id) } }
+    val bytes by produceState(0L, m.id, version) {
+        value = withContext(Dispatchers.IO) { Enhanced.sizeBytes(vm.library, m.id) }
+    }
+    val mine = status?.takeIf { it.mangaId == m.id }
+    var confirmDelete by remember { mutableStateOf(false) }
+
+    Column(
+        Modifier.widthIn(max = 960.dp).fillMaxWidth().padding(horizontal = 32.dp, vertical = 8.dp)
+            .clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.surfaceVariant)
+            .padding(18.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Rounded.AutoAwesome, null, tint = Palette.Amber)
+            Spacer(Modifier.width(10.dp))
+            Text("AI enhance", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+            if (vm.enhancer.available) {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf("off" to "Off", "reading" to "As you read", "all" to "Whole manga").forEach { (mode, label) ->
+                        val selected = m.enhance == mode
+                        Text(
+                            label,
+                            style = MaterialTheme.typography.labelLarge,
+                            color = if (selected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.clip(RoundedCornerShape(50))
+                                .background(if (selected) Palette.SunsetH else Brush.linearGradient(listOf(Palette.CardHigh, Palette.CardHigh)))
+                                .clickable { vm.setEnhanceMode(m.id, mode) }
+                                .padding(horizontal = 14.dp, vertical = 7.dp),
+                        )
+                    }
+                }
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        val explain = when {
+            !vm.enhancer.available -> "The AI engine wasn't found. It comes in the \"ai\" folder of the Windows download."
+            m.enhance == "reading" -> "Enhances the chapter you're reading and the next 2 on your graphics card, and clears older ones."
+            m.enhance == "all" -> "Enhancing every chapter in the background. Uses about 1.5x the space of the originals."
+            else -> "Redraws pages at 1.5x with sharper lines and less JPEG blockiness, using your graphics card. Your original files are kept."
+        }
+        Text(explain, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (vm.enhancer.available && (mine != null || done > 0)) {
+            Spacer(Modifier.height(10.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    if (mine != null) {
+                        val pct = if (mine.total > 0) mine.done * 100 / mine.total else 0
+                        Text(
+                            "Enhancing ${mine.chapterName} · $pct%" + if (mine.queued > 0) " · ${mine.queued} more queued" else "",
+                            style = MaterialTheme.typography.labelLarge,
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Box(Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(50)).background(Palette.Line)) {
+                            Box(Modifier.fillMaxWidth(pct / 100f).height(4.dp).background(Palette.SunsetH))
+                        }
+                        Spacer(Modifier.height(6.dp))
+                    }
+                    Text(
+                        "$done of ${m.chapters.size} chapters enhanced · ${formatBytes(bytes)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (done > 0) {
+                    TextButton(onClick = { confirmDelete = true }) { Text("Delete enhanced pages") }
+                }
+            }
+        }
+    }
+    if (confirmDelete) {
+        ConfirmDialog(
+            "Delete enhanced pages?",
+            "Frees ${formatBytes(bytes)}. Your original pages stay, and AI enhance is turned off for this manga.",
+            "Delete",
+            onDismiss = { confirmDelete = false },
+        ) { vm.deleteEnhanced(m.id) }
+    }
+}
+
+private fun formatBytes(b: Long): String = when {
+    b >= 1L shl 30 -> "%.1f GB".format(b / (1L shl 30).toDouble())
+    b >= 1L shl 20 -> "%.0f MB".format(b / (1L shl 20).toDouble())
+    else -> "%.0f KB".format(b / 1024.0)
 }

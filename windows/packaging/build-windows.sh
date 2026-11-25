@@ -3,11 +3,12 @@
 #   MangaScroll/MangaScroll.exe  (small launcher, compiled with zig)
 #   MangaScroll/app/MangaScroll.jar
 #   MangaScroll/runtime/          (slim Java 17 runtime for Windows, made with jlink)
+#   MangaScroll/ai/               (Real-ESRGAN ncnn Vulkan engine + anime model, for AI enhance)
 # Needs: JDK 17+, curl, unzip, tar, zip, and zig (pip install ziglang, or https://ziglang.org).
 # Downloads Temurin JDK 17 for Windows (its jmods) and for Linux (jlink must match the jmods version).
 set -euo pipefail
 cd "$(dirname "$0")/.."
-VERSION=1.1
+VERSION=1.2
 OUT=build/windows
 ZIG=${ZIG:-zig}
 
@@ -30,6 +31,14 @@ MODULES=java.base,java.desktop,java.instrument,java.prefs,java.sql,jdk.unsupport
     launcher.c launcher.rc -o "../$OUT/MangaScroll/MangaScroll.exe")
 rm -f "$OUT/MangaScroll/MangaScroll.pdb"
 cp packaging/README-windows.txt "$OUT/MangaScroll/README.txt"
+
+# AI enhance engine (BSD-3-Clause, https://github.com/xinntao/Real-ESRGAN)
+ESR_ZIP=build/realesrgan-windows.zip
+[ -f "$ESR_ZIP" ] || curl -L -o "$ESR_ZIP" https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesrgan-ncnn-vulkan-20220424-windows.zip
+mkdir -p "$OUT/MangaScroll/ai/models"
+unzip -q -j -o "$ESR_ZIP" realesrgan-ncnn-vulkan.exe vcomp140.dll -d "$OUT/MangaScroll/ai"
+unzip -q -j -o "$ESR_ZIP" models/realesrgan-x4plus-anime.bin models/realesrgan-x4plus-anime.param -d "$OUT/MangaScroll/ai/models"
+cp packaging/AI-LICENSE.txt "$OUT/MangaScroll/ai/LICENSE.txt"
 
 (cd "$OUT" && zip -qr "MangaScroll-$VERSION-windows-x64.zip" MangaScroll)
 echo "Built $OUT/MangaScroll-$VERSION-windows-x64.zip"

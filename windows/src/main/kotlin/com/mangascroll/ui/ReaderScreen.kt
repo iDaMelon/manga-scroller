@@ -85,6 +85,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.mangascroll.data.Enhanced
 import com.mangascroll.reader.Segment
 import com.mangascroll.reader.SegmentLoader
 import com.mangascroll.reader.buildSegments
@@ -112,10 +113,22 @@ fun ReaderScreen(vm: AppViewModel, mangaId: String, chapterId: String) {
     val prev = manga.chapters.getOrNull(chIndex - 1)
     val next = manga.chapters.getOrNull(chIndex + 1)
 
-    val (segments, pageStarts) = remember(chapterId) {
-        buildSegments(chapter.pages.map { p -> Triple(vm.library.pageFile(mangaId, chapterId, p), p.w, p.h) })
+    // AI-enhanced pages are used when this chapter has been enhanced and the AI switch is on
+    val aiVersion by vm.enhancer.version.collectAsState()
+    val aiStatus by vm.enhancer.status.collectAsState()
+    val aiReady = remember(chapterId, aiVersion) { Enhanced.isDone(vm.library, mangaId, chapterId) }
+    val useAi = aiReady && vm.showEnhanced
+    LaunchedEffect(chapterId) { vm.onChapterOpened(mangaId, chapterId) }
+
+    val (segments, pageStarts) = remember(chapterId, useAi) {
+        buildSegments(chapter.pages.mapIndexed { i, p ->
+            if (useAi) {
+                val (w, h) = Enhanced.dims(p.w, p.h)
+                Triple(Enhanced.pageFile(vm.library, mangaId, chapterId, i), w, h)
+            } else Triple(vm.library.pageFile(mangaId, chapterId, p), p.w, p.h)
+        })
     }
-    val loader = remember(chapterId) { SegmentLoader() }
+    val loader = remember(segments) { SegmentLoader(segments) }
     DisposableEffect(loader) { onDispose { loader.close() } }
 
     val listState = remember(chapterId) {
@@ -200,6 +213,7 @@ fun ReaderScreen(vm: AppViewModel, mangaId: String, chapterId: String) {
                     e.key == Key.Minus || e.key == Key.NumPadSubtract -> { setZoom(zoom - 0.1f); true }
                     e.key == Key.Zero && e.isCtrlPressed || e.key == Key.Zero -> { setZoom(1f); true }
                     e.key == Key.F11 || e.key == Key.F -> { vm.fullscreen = !vm.fullscreen; true }
+                    e.key == Key.A -> { if (aiReady) vm.toggleEnhanced(); true }
                     e.key == Key.Escape -> { if (vm.fullscreen) vm.fullscreen = false else vm.back(); true }
                     else -> false
                 }
@@ -313,6 +327,25 @@ fun ReaderScreen(vm: AppViewModel, mangaId: String, chapterId: String) {
                         style = MaterialTheme.typography.labelMedium,
                         modifier = Modifier.weight(1f),
                     )
+                    if (vm.enhancer.available) {
+                        val busy = aiStatus?.takeIf { it.mangaId == mangaId && it.chapterId == chapterId }
+                        val label = when {
+                            busy != null -> "AI ${if (busy.total > 0) busy.done * 100 / busy.total else 0}%"
+                            aiReady -> if (vm.showEnhanced) "AI on" else "AI off"
+                            manga.enhance != "off" -> "AI queued"
+                            else -> "AI off"
+                        }
+                        val on = aiReady && vm.showEnhanced
+                        Text(
+                            label,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = if (on) Color.White else Color.White.copy(alpha = 0.7f),
+                            modifier = Modifier.padding(end = 8.dp).clip(RoundedCornerShape(50))
+                                .background(if (on) Palette.SunsetH else Brush.linearGradient(listOf(Color.White.copy(alpha = 0.1f), Color.White.copy(alpha = 0.1f))))
+                                .clickable(enabled = aiReady) { vm.toggleEnhanced() }
+                                .padding(horizontal = 12.dp, vertical = 6.dp),
+                        )
+                    }
                     IconButton(onClick = { setZoom(zoom - 0.1f) }) { Icon(Icons.Rounded.Remove, "Zoom out", tint = Color.White) }
                     Text(
                         "${(zoom * 100).roundToInt()}%",

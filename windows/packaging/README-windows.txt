@@ -13,12 +13,21 @@ Importing
   - Pages are sorted by file name (01, 02 ... 10). A folder with sub-folders becomes
     one chapter per sub-folder.
 
+AI enhance
+  On a manga's page, turn on AI enhance: "As you read" (the chapter you're on plus the
+  next 2) or "Whole manga". It runs on your graphics card and saves sharper 1.5x copies
+  of the pages; your originals are kept. Use "Delete enhanced pages" to free the space.
+  In the reader, the "AI on/off" button (or the A key) switches between enhanced and original.
+  If it fails, update your graphics driver (it needs Vulkan, which current AMD, NVIDIA
+  and Intel drivers include).
+
 Reading
   Mouse wheel / Space / Page Down    scroll   (Shift+Space or Page Up to go back)
   Up / Down                         small scroll
   Ctrl + mouse wheel, + / -, 0      zoom (0 resets)
   Right / Left  (or N / P)          next / previous chapter
   F11 or F                          full screen
+  A                                 AI enhanced / original pages
   Esc                               exit full screen / go back
   Click the page                    keep the controls visible
 

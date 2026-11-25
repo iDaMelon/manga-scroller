@@ -4,6 +4,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.mangascroll.data.Enhancer
 import com.mangascroll.data.ImportSource
 import com.mangascroll.data.Importer
 import com.mangascroll.data.Library
@@ -45,6 +46,19 @@ class AppViewModel(val library: Library) {
     private val viewModelScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val importer = Importer(library)
     private val saves = mutableListOf<Job>()
+    private val prefs = java.util.prefs.Preferences.userRoot().node("mangascroll")
+
+    /** Runs the AI upscaler in the background. */
+    val enhancer = Enhancer(library, viewModelScope)
+
+    /** Reader shows AI-enhanced pages when they exist (toggle in the reader). */
+    var showEnhanced by mutableStateOf(prefs.getBoolean("showEnhanced", true))
+        private set
+
+    fun toggleEnhanced() {
+        showEnhanced = !showEnhanced
+        prefs.putBoolean("showEnhanced", showEnhanced)
+    }
 
     val manga = library.items
     val ready = library.ready
@@ -69,7 +83,60 @@ class AppViewModel(val library: Library) {
         private set
 
     init {
-        viewModelScope.launch { library.load() }
+        viewModelScope.launch {
+            library.load()
+            // resume background work for manga set to enhance everything
+            library.items.value.filter { it.enhance == "all" }.forEach { m ->
+                enhancer.request(m.id, m.chapters.map { it.id })
+            }
+        }
+        viewModelScope.launch { for (msg in enhancer.errors) toast = msg }
+    }
+
+    // ---------- AI enhance ----------
+
+    /** "off", "reading" (current chapter + the next 2) or "all". */
+    fun setEnhanceMode(mangaId: String, mode: String) = viewModelScope.launch {
+        library.updateManga(mangaId) { it.copy(enhance = mode) }
+        val m = library.find(mangaId) ?: return@launch
+        when (mode) {
+            "off" -> enhancer.cancel(mangaId)
+            "all" -> {
+                val start = m.continueChapter()?.let { c -> m.chapters.indexOf(c) } ?: 0
+                val ids = m.chapters.map { it.id }
+                enhancer.request(mangaId, ids.drop(start) + ids.take(start))
+            }
+            "reading" -> {
+                enhancer.cancel(mangaId)
+                m.continueChapter()?.let { enhanceAround(m, it.id) }
+            }
+        }
+    }
+
+    /** Called when a chapter opens in the reader. */
+    fun onChapterOpened(mangaId: String, chapterId: String) {
+        val m = library.find(mangaId) ?: return
+        when (m.enhance) {
+            "reading" -> enhanceAround(m, chapterId)
+            "all" -> {
+                val i = m.chapters.indexOfFirst { it.id == chapterId }
+                enhancer.request(mangaId, m.chapters.drop(i).take(3).map { it.id }, front = true)
+            }
+        }
+    }
+
+    /** Enhance this chapter and the next 2; drop enhanced chapters more than 2 behind. */
+    private fun enhanceAround(m: Manga, chapterId: String) {
+        val i = m.chapters.indexOfFirst { it.id == chapterId }.coerceAtLeast(0)
+        enhancer.request(m.id, m.chapters.drop(i).take(3).map { it.id }, front = true)
+        val old = m.chapters.take((i - 2).coerceAtLeast(0)).map { it.id }
+            .filter { com.mangascroll.data.Enhanced.isDone(library, m.id, it) }
+        if (old.isNotEmpty()) viewModelScope.launch(Dispatchers.IO) { enhancer.delete(m.id, old) }
+    }
+
+    fun deleteEnhanced(mangaId: String) = viewModelScope.launch {
+        library.updateManga(mangaId) { it.copy(enhance = "off") }
+        withContext(Dispatchers.IO) { enhancer.delete(mangaId) }
     }
 
     fun open(screen: Screen) { stack.add(screen) }
@@ -154,6 +221,7 @@ class AppViewModel(val library: Library) {
     }
 
     fun deleteManga(id: String) = viewModelScope.launch {
+        enhancer.cancel(id)
         stack.removeAll { (it is Screen.Detail && it.mangaId == id) || (it is Screen.Reader && it.mangaId == id) }
         library.deleteManga(id)
     }
@@ -164,6 +232,7 @@ class AppViewModel(val library: Library) {
 
     fun deleteChapter(mangaId: String, chapterId: String) = viewModelScope.launch {
         val wasFirst = library.find(mangaId)?.chapters?.firstOrNull()?.id == chapterId
+        withContext(Dispatchers.IO) { enhancer.delete(mangaId, listOf(chapterId)) }
         library.deleteChapter(mangaId, chapterId)
         if (wasFirst) { importer.makeCover(mangaId); coverVersion++ }
     }
