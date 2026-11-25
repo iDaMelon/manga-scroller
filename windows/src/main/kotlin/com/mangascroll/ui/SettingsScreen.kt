@@ -714,6 +714,7 @@ private fun AboutPage() {
 
 fun formatSize(b: Long): String = when {
     b >= 1L shl 30 -> "%.1f GB".format(b / (1L shl 30).toDouble())
-    b >= 1L shl 20 -> "%.0f MB".format(b / (1L shl 20).toDouble())
+    b >= 10L shl 20 -> "%.0f MB".format(b / (1L shl 20).toDouble())
+    b >= 1L shl 20 -> "%.1f MB".format(b / (1L shl 20).toDouble())
     else -> "%.0f KB".format(b / 1024.0)
 }

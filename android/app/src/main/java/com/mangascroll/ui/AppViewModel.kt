@@ -172,6 +172,32 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         importer.makeCover(mangaId); coverVersion++
     }
 
+    /** Saves a chapter as a .cbz (a zip of its pages in reading order) to the place the user picked. */
+    fun exportChapter(mangaId: String, chapterId: String, uri: android.net.Uri) = viewModelScope.launch {
+        val app = getApplication<Application>()
+        val chapter = library.find(mangaId)?.chapters?.firstOrNull { it.id == chapterId } ?: return@launch
+        val result = runCatching {
+            withContext(kotlinx.coroutines.Dispatchers.IO) {
+                app.contentResolver.openOutputStream(uri)?.buffered()?.let { stream ->
+                    java.util.zip.ZipOutputStream(stream).use { zip ->
+                        zip.setLevel(java.util.zip.Deflater.NO_COMPRESSION) // pages are already compressed
+                        chapter.pages.forEachIndexed { i, p ->
+                            val f = library.pageFile(mangaId, chapterId, p)
+                            zip.putNextEntry(java.util.zip.ZipEntry("%03d.%s".format(i + 1, f.extension.lowercase())))
+                            f.inputStream().use { it.copyTo(zip) }
+                            zip.closeEntry()
+                        }
+                    }
+                } ?: throw IllegalStateException("couldn't open the file")
+            }
+        }
+        android.widget.Toast.makeText(
+            app,
+            result.fold({ "Exported ${chapter.name}" }, { "Export failed: ${it.message}" }),
+            android.widget.Toast.LENGTH_SHORT,
+        ).show()
+    }
+
     fun rebuildCovers() = viewModelScope.launch {
         library.items.value.forEach { importer.makeCover(it.id) }
         coverVersion++

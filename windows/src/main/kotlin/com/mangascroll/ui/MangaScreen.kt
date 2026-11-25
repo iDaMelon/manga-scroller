@@ -68,6 +68,7 @@ fun MangaScreen(vm: AppViewModel, mangaId: String) {
     var deleting by remember { mutableStateOf(false) }
     var renamingChapter by remember { mutableStateOf<Chapter?>(null) }
     var deletingChapter by remember { mutableStateOf<Chapter?>(null) }
+    var propsChapter by remember { mutableStateOf<Chapter?>(null) }
     val cover = vm.library.coverFile(m.id)
     val aiStatus by vm.enhancer.status.collectAsState()
     val aiVersion by vm.enhancer.version.collectAsState()
@@ -162,6 +163,7 @@ fun MangaScreen(vm: AppViewModel, mangaId: String) {
                     onToggleRead = { vm.setRead(m.id, c.id, !c.read) },
                     onRename = { renamingChapter = c },
                     onDelete = { deletingChapter = c },
+                    onProperties = { propsChapter = c },
                 )
             }
         }
@@ -196,6 +198,12 @@ fun MangaScreen(vm: AppViewModel, mangaId: String) {
     renamingChapter?.let { c ->
         TextPromptDialog("Rename chapter", c.name, "Name", onDismiss = { renamingChapter = null }) { vm.renameChapter(m.id, c.id, it) }
     }
+    propsChapter?.let { pc ->
+        // show the latest copy of the chapter (it can change while the dialog is open)
+        val live = m.chapters.firstOrNull { it.id == pc.id }
+        if (live == null) propsChapter = null
+        else ChapterPropertiesDialog(vm, m, live) { propsChapter = null }
+    }
     deletingChapter?.let { c ->
         ConfirmDialog("Delete \"${c.name}\"?", "Its pages will be removed from the app.", "Delete",
             onDismiss = { deletingChapter = null }) { vm.deleteChapter(m.id, c.id) }
@@ -223,6 +231,7 @@ private fun ChapterRow(
     onToggleRead: () -> Unit,
     onRename: () -> Unit,
     onDelete: () -> Unit,
+    onProperties: () -> Unit,
 ) {
     var menu by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(24.dp)
@@ -295,6 +304,7 @@ private fun ChapterRow(
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                 DropdownMenuItem(text = { Text(if (c.read) "Mark as unread" else "Mark as read") }, onClick = { menu = false; onToggleRead() })
                 DropdownMenuItem(text = { Text("Rename") }, onClick = { menu = false; onRename() })
+                DropdownMenuItem(text = { Text("Properties") }, onClick = { menu = false; onProperties() })
                 DropdownMenuItem(text = { Text("Delete", color = MaterialTheme.colorScheme.error) }, onClick = { menu = false; onDelete() })
             }
         }

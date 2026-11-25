@@ -34,6 +34,10 @@ object Enhanced {
     fun pageFile(lib: Library, mangaId: String, chapterId: String, index: Int) =
         File(dir(lib, mangaId, chapterId), "p%04d.webp".format(index))
     fun isDone(lib: Library, mangaId: String, chapterId: String) = File(dir(lib, mangaId, chapterId), ".done").exists()
+    /** Why the last enhance attempt for a chapter failed (kept until it succeeds or is deleted). */
+    fun errorFile(lib: Library, mangaId: String, chapterId: String) = File(root(lib, mangaId), "$chapterId.error")
+    fun error(lib: Library, mangaId: String, chapterId: String): String? =
+        errorFile(lib, mangaId, chapterId).takeIf { it.isFile }?.readText()?.takeIf { it.isNotBlank() }
     fun sizeBytes(lib: Library, mangaId: String): Long =
         root(lib, mangaId).walkTopDown().filter { it.isFile }.sumOf { it.length() }
 }
@@ -126,7 +130,10 @@ class Enhancer(
     fun delete(mangaId: String, chapterIds: Collection<String>? = null) {
         cancel(mangaId, chapterIds?.toSet())
         if (chapterIds == null) Enhanced.root(library, mangaId).deleteRecursively()
-        else chapterIds.forEach { Enhanced.dir(library, mangaId, it).deleteRecursively() }
+        else chapterIds.forEach {
+            Enhanced.dir(library, mangaId, it).deleteRecursively()
+            Enhanced.errorFile(library, mangaId, it).delete()
+        }
         _version.value++
     }
 
@@ -146,6 +153,11 @@ class Enhancer(
                 Enhanced.dir(library, job.mangaId, job.chapterId).deleteRecursively()
             } catch (e: Throwable) {
                 Enhanced.dir(library, job.mangaId, job.chapterId).deleteRecursively()
+                runCatching {
+                    Enhanced.errorFile(library, job.mangaId, job.chapterId).apply { parentFile.mkdirs() }
+                        .writeText(e.message ?: e.javaClass.simpleName)
+                }
+                _version.value++
                 val name = library.find(job.mangaId)?.chapters?.firstOrNull { it.id == job.chapterId }?.name ?: "a chapter"
                 _errors.trySend("AI enhance failed on $name: ${e.message ?: e.javaClass.simpleName}")
                 // a broken engine would fail every job; stop instead of spamming
@@ -228,6 +240,7 @@ class Enhancer(
             File(dest, "p%04d.webp".format(plan.index)).writeBytes(bytes)
         }
         File(dest, ".done").writeText(MODEL)
+        Enhanced.errorFile(library, job.mangaId, job.chapterId).delete()
         _version.value++
         runCatching { onChapterDone(job.mangaId, job.chapterId) }
     }

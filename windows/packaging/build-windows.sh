@@ -8,7 +8,7 @@
 # Downloads Temurin JDK 17 for Windows (its jmods) and for Linux (jlink must match the jmods version).
 set -euo pipefail
 cd "$(dirname "$0")/.."
-VERSION=1.4
+VERSION=1.5
 OUT=build/windows
 ZIG=${ZIG:-zig}
 

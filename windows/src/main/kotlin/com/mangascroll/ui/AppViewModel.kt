@@ -195,6 +195,56 @@ class AppViewModel(val library: Library) {
         toast = "Restart MangaScroll to open the new library folder"
     }
 
+    // ---------- chapter properties ----------
+
+    fun enhanceChapterNow(mangaId: String, chapterId: String) {
+        com.mangascroll.data.Enhanced.errorFile(library, mangaId, chapterId).delete()
+        enhancer.request(mangaId, listOf(chapterId), front = true)
+        enhancer.changed()
+    }
+
+    fun reEnhanceChapter(mangaId: String, chapterId: String) = viewModelScope.launch {
+        withContext(Dispatchers.IO) { enhancer.delete(mangaId, listOf(chapterId)) }
+        enhancer.request(mangaId, listOf(chapterId), front = true)
+    }
+
+    fun deleteChapterAi(mangaId: String, chapterId: String) = viewModelScope.launch {
+        withContext(Dispatchers.IO) { enhancer.delete(mangaId, listOf(chapterId)) }
+    }
+
+    fun openFolder(dir: java.io.File) {
+        runCatching { java.awt.Desktop.getDesktop().open(dir) }.onFailure { toast = "Couldn't open ${dir.path}" }
+    }
+
+    /** Saves a chapter as a .cbz (a zip of its pages in reading order). */
+    fun exportChapter(manga: Manga, chapter: com.mangascroll.data.Chapter, useAi: Boolean) {
+        val safe = "${manga.title} - ${chapter.name}${if (useAi) " (AI)" else ""}".replace(Regex("[\\\\/:*?\"<>|]"), "_")
+        val dialog = java.awt.FileDialog(Pickers.owner, "Export chapter", java.awt.FileDialog.SAVE).apply { file = "$safe.cbz" }
+        dialog.isVisible = true
+        val name = dialog.file ?: return
+        val out = java.io.File(dialog.directory, if (name.endsWith(".cbz", true) || name.endsWith(".zip", true)) name else "$name.cbz")
+        val files = chapter.pages.mapIndexed { i, p ->
+            if (useAi) com.mangascroll.data.Enhanced.pageFile(library, manga.id, chapter.id, i)
+            else library.pageFile(manga.id, chapter.id, p)
+        }
+        viewModelScope.launch {
+            toast = "Exporting ${chapter.name}…"
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    java.util.zip.ZipOutputStream(out.outputStream().buffered()).use { zip ->
+                        zip.setLevel(java.util.zip.Deflater.NO_COMPRESSION) // pages are already compressed
+                        files.forEachIndexed { i, f ->
+                            zip.putNextEntry(java.util.zip.ZipEntry("%03d.%s".format(i + 1, f.extension.lowercase())))
+                            f.inputStream().use { it.copyTo(zip) }
+                            zip.closeEntry()
+                        }
+                    }
+                }
+            }.onSuccess { toast = "Saved ${out.name} (${formatSize(out.length())})" }
+                .onFailure { toast = "Export failed: ${it.message}" }
+        }
+    }
+
     fun deleteEnhanced(mangaId: String) = viewModelScope.launch {
         library.updateManga(mangaId) { it.copy(enhance = "off") }
         withContext(Dispatchers.IO) { enhancer.delete(mangaId) }

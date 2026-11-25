@@ -60,7 +60,7 @@ import kotlinx.coroutines.delay
 import java.io.File
 import java.net.URI
 
-const val APP_VERSION = "1.4"
+const val APP_VERSION = "1.5"
 
 fun main() {
     // MANGASCROLL_DIR lets you keep the library somewhere else (e.g. a portable drive)
