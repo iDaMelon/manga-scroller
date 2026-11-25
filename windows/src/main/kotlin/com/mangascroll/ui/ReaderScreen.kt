@@ -128,7 +128,10 @@ fun ReaderScreen(vm: AppViewModel, mangaId: String, chapterId: String) {
             } else Triple(vm.library.pageFile(mangaId, chapterId, p), p.w, p.h)
         })
     }
-    val loader = remember(segments) { SegmentLoader(segments) }
+    val settings = vm.settings
+    val loader = remember(segments, settings.sharper) { SegmentLoader(segments, settings.sharper) }
+    val pageBg = when (settings.readerBg) { "white" -> Color.White; "gray" -> Color(0xFF2B2B31); else -> Color(0xFF09090C) }
+    val pageFg = if (settings.readerBg == "white") Color(0xFF1B1B1F) else Color.White
     DisposableEffect(loader) { onDispose { loader.close() } }
 
     val listState = remember(chapterId) {
@@ -149,9 +152,9 @@ fun ReaderScreen(vm: AppViewModel, mangaId: String, chapterId: String) {
     var lastMove by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var showBars by remember { mutableStateOf(true) }
     var pinned by remember { mutableStateOf(false) }
-    LaunchedEffect(lastMove, pinned) {
+    LaunchedEffect(lastMove, pinned, settings.autoHide) {
         showBars = true
-        if (!pinned) {
+        if (!pinned && settings.autoHide) {
             delay(2500); showBars = false
         }
     }
@@ -187,7 +190,7 @@ fun ReaderScreen(vm: AppViewModel, mangaId: String, chapterId: String) {
     BoxWithConstraints(
         Modifier
             .fillMaxSize()
-            .background(Color(0xFF09090C))
+            .background(pageBg)
             .onPointerEvent(PointerEventType.Move, PointerEventPass.Initial) { lastMove = System.currentTimeMillis() }
             .onPointerEvent(PointerEventType.Scroll, PointerEventPass.Initial) { e ->
                 if (e.keyboardModifiers.isCtrlPressed) {
@@ -222,12 +225,21 @@ fun ReaderScreen(vm: AppViewModel, mangaId: String, chapterId: String) {
             .focusable(),
     ) {
         val density = LocalDensity.current
-        val columnWidth = minOf(maxWidth.value, BASE_WIDTH * zoom).dp
-        val targetWidth = with(density) { columnWidth.toPx() }.roundToInt()
+        val maxPx = with(density) { maxWidth.toPx() }
+        val original = settings.pageWidth == "original"
+        // fit: a 720dp column (times zoom); original: 1 image pixel = 1 screen pixel (times zoom)
+        val fitPx = with(density) { minOf(maxWidth.value, BASE_WIDTH * zoom).dp.toPx() }
+        fun widthPx(seg: Segment): Int = (if (original) minOf(maxPx, seg.srcW * zoom) else fitPx).roundToInt().coerceAtLeast(1)
 
-        LaunchedEffect(chapterId, targetWidth) {
+        LaunchedEffect(chapterId, fitPx, original, zoom, loader) {
             snapshotFlow { listState.firstVisibleItemIndex }.collectLatest { first ->
-                for (i in first until minOf(segments.size, first + 6)) loader.load(segments[i], targetWidth)
+                for (i in first until minOf(segments.size, first + 6)) loader.load(segments[i], widthPx(segments[i]))
+            }
+        }
+        // open the next chapter by itself at the end (setting)
+        LaunchedEffect(atEnd, settings.autoNext, next?.id) {
+            if (atEnd && settings.autoNext && next != null) {
+                delay(1800); goTo(next.id)
             }
         }
 
@@ -239,13 +251,17 @@ fun ReaderScreen(vm: AppViewModel, mangaId: String, chapterId: String) {
                     pinned = !pinned; lastMove = System.currentTimeMillis()
                 },
         ) {
-            itemsIndexed(segments, key = { _, s -> s.key }) { _, seg ->
-                SegmentImage(seg, loader, targetWidth, Modifier.width(columnWidth))
+            itemsIndexed(segments, key = { _, s -> s.key }) { i, seg ->
+                val tw = widthPx(seg)
+                SegmentImage(seg, loader, tw, Modifier.width(with(density) { tw.toDp() }))
+                if (settings.pageGaps && seg.bottom == seg.srcH && i < segments.size - 1) Spacer(Modifier.height(16.dp))
             }
             item(key = "end") {
                 ChapterEnd(
                     chapterName = chapter.name,
                     nextName = next?.name,
+                    fg = pageFg,
+                    autoNext = settings.autoNext && next != null,
                     onNext = { next?.let { goTo(it.id) } },
                     onBack = { vm.back() },
                 )
@@ -339,7 +355,7 @@ fun ReaderScreen(vm: AppViewModel, mangaId: String, chapterId: String) {
                         Text(
                             label,
                             style = MaterialTheme.typography.labelMedium,
-                            color = if (on) Color.White else Color.White.copy(alpha = 0.7f),
+                            color = if (on) MaterialTheme.colorScheme.onPrimary else Color.White.copy(alpha = 0.7f),
                             modifier = Modifier.padding(end = 8.dp).clip(RoundedCornerShape(50))
                                 .background(if (on) Palette.SunsetH else Brush.linearGradient(listOf(Color.White.copy(alpha = 0.1f), Color.White.copy(alpha = 0.1f))))
                                 .clickable(enabled = aiReady) { vm.toggleEnhanced() }
@@ -377,19 +393,20 @@ private fun SegmentImage(seg: Segment, loader: SegmentLoader, targetWidth: Int, 
 }
 
 @Composable
-private fun ChapterEnd(chapterName: String, nextName: String?, onNext: () -> Unit, onBack: () -> Unit) {
+private fun ChapterEnd(chapterName: String, nextName: String?, fg: Color, autoNext: Boolean, onNext: () -> Unit, onBack: () -> Unit) {
     Column(
         Modifier.fillMaxWidth().padding(vertical = 56.dp, horizontal = 24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text("End of $chapterName", color = Color.White, style = MaterialTheme.typography.titleMedium)
+        Text("End of $chapterName", color = fg, style = MaterialTheme.typography.titleMedium)
         if (nextName != null) {
             GradientButton(onClick = onNext) { Text("Next: $nextName  (→)", maxLines = 1, overflow = TextOverflow.Ellipsis) }
+            if (autoNext) Text("Opening the next chapter…", color = fg.copy(alpha = 0.7f), style = MaterialTheme.typography.bodySmall)
         } else {
-            Text("You're all caught up", color = Color.White.copy(alpha = 0.7f))
+            Text("You're all caught up", color = fg.copy(alpha = 0.7f))
         }
-        OutlinedButton(onClick = onBack) { Text("Back to chapters", color = Color.White) }
+        OutlinedButton(onClick = onBack) { Text("Back to chapters", color = fg) }
         Spacer(Modifier.height(80.dp))
     }
 }

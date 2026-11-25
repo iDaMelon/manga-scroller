@@ -54,7 +54,7 @@ fun buildSegments(pages: List<Triple<File, Int, Int>>): Pair<List<Segment>, IntA
  * Decodes a page once and draws all of its slices at exactly the on-screen width,
  * with a cubic (Mitchell) filter: sharper than plain bilinear stretching.
  */
-class SegmentLoader(private val segments: List<Segment>) {
+class SegmentLoader(private val segments: List<Segment>, private val sharper: Boolean = true) {
     private val maxBytes = Runtime.getRuntime().maxMemory() / 4
 
     private class Entry(val bitmap: ImageBitmap, val width: Int, val bytes: Long)
@@ -102,7 +102,11 @@ class SegmentLoader(private val segments: List<Segment>) {
             return
         }
         val scale = tw.toFloat() / image.width
-        val sampling: SamplingMode = if (scale < 0.5f) FilterMipmap(FilterMode.LINEAR, MipmapMode.LINEAR) else SamplingMode.MITCHELL
+        val sampling: SamplingMode = when {
+            scale < 0.5f -> FilterMipmap(FilterMode.LINEAR, MipmapMode.LINEAR)
+            sharper -> SamplingMode.MITCHELL
+            else -> FilterMipmap(FilterMode.LINEAR, MipmapMode.NONE)
+        }
         // the file may differ slightly from the recorded size; map rows proportionally
         val rowScale = image.height.toFloat() / seg.srcH
         for (s in pageSegs) {

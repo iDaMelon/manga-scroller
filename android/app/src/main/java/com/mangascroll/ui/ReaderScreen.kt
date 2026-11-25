@@ -64,6 +64,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.width
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
@@ -108,7 +109,10 @@ fun ReaderScreen(vm: AppViewModel, mangaId: String, chapterId: String) {
     val (segments, pageStarts) = remember(chapterId) {
         buildSegments(chapter.pages.map { p -> Triple(vm.library.pageFile(mangaId, chapterId, p), p.w, p.h) })
     }
-    val loader = remember(chapterId) { SegmentLoader() }
+    val settings = vm.settings
+    val loader = remember(chapterId, settings.sharper) { SegmentLoader(settings.sharper) }
+    val pageBg = when (settings.readerBg) { "white" -> Color.White; "gray" -> Color(0xFF2B2B31); else -> Color(0xFF07070A) }
+    val pageFg = if (settings.readerBg == "white") Color(0xFF1B1B1F) else Color.White
     DisposableEffect(loader) { onDispose { loader.close() } }
 
     val listState = remember(chapterId) {
@@ -153,7 +157,7 @@ fun ReaderScreen(vm: AppViewModel, mangaId: String, chapterId: String) {
     val view = LocalView.current
     val window = (view.context as? Activity)?.window
     DisposableEffect(Unit) {
-        view.keepScreenOn = true
+        view.keepScreenOn = settings.keepScreenOn
         onDispose {
             view.keepScreenOn = false
             window?.let { WindowCompat.getInsetsController(it, view).show(WindowInsetsCompat.Type.systemBars()) }
@@ -168,12 +172,24 @@ fun ReaderScreen(vm: AppViewModel, mangaId: String, chapterId: String) {
     }
 
     // ---- preload the next few slices ----
-    BoxWithConstraints(Modifier.fillMaxSize().background(Color.Black)) {
-        val widthPx = with(LocalDensity.current) { maxWidth.toPx() }
-        val targetWidth = widthPx.roundToInt()
-        LaunchedEffect(chapterId, targetWidth) {
+    // open the next chapter by itself when the end is reached (setting)
+    LaunchedEffect(atEnd, settings.autoNext, next?.id) {
+        if (atEnd && settings.autoNext && next != null) {
+            delay(1800)
+            vm.replaceTop(Screen.Reader(mangaId, next.id))
+        }
+    }
+
+    BoxWithConstraints(Modifier.fillMaxSize().background(pageBg)) {
+        val density = LocalDensity.current
+        val widthPx = with(density) { maxWidth.toPx() }
+        val screenWidth = widthPx.roundToInt()
+        val original = settings.pageWidth == "original"
+        // fit: every slice fills the screen width; original: 1 image pixel = 1 screen pixel
+        fun widthFor(seg: Segment) = if (original) minOf(screenWidth, seg.srcW) else screenWidth
+        LaunchedEffect(chapterId, screenWidth, original, loader) {
             snapshotFlow { listState.firstVisibleItemIndex }.collectLatest { first ->
-                for (i in first until minOf(segments.size, first + 5)) loader.load(segments[i], targetWidth)
+                for (i in first until minOf(segments.size, first + 5)) loader.load(segments[i], widthFor(segments[i]))
             }
         }
 
@@ -223,6 +239,7 @@ fun ReaderScreen(vm: AppViewModel, mangaId: String, chapterId: String) {
         ) {
             LazyColumn(
                 state = listState,
+                horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier
                     .fillMaxSize()
                     .graphicsLayer {
@@ -232,13 +249,19 @@ fun ReaderScreen(vm: AppViewModel, mangaId: String, chapterId: String) {
                         transformOrigin = TransformOrigin.Center
                     },
             ) {
-                itemsIndexed(segments, key = { _, s -> s.key }) { _, seg ->
-                    SegmentImage(seg, loader, targetWidth)
+                itemsIndexed(segments, key = { _, s -> s.key }) { i, seg ->
+                    val tw = widthFor(seg)
+                    val dpWidth = with(density) { tw.toDp() }
+                    SegmentImage(seg, loader, tw, Modifier.width(dpWidth))
+                    // a gap after the last slice of each page (setting)
+                    if (settings.pageGaps && seg.bottom == seg.srcH && i < segments.size - 1) Spacer(Modifier.height(14.dp))
                 }
                 item(key = "end") {
                     ChapterEnd(
                         chapterName = chapter.name,
                         nextName = next?.name,
+                        fg = pageFg,
+                        autoNext = settings.autoNext && next != null,
                         onNext = { next?.let { vm.replaceTop(Screen.Reader(mangaId, it.id)) } },
                         onBack = { vm.back() },
                     )
@@ -317,12 +340,12 @@ fun ReaderScreen(vm: AppViewModel, mangaId: String, chapterId: String) {
 }
 
 @Composable
-private fun SegmentImage(seg: Segment, loader: SegmentLoader, targetWidth: Int) {
+private fun SegmentImage(seg: Segment, loader: SegmentLoader, targetWidth: Int, modifier: Modifier) {
     var bitmap by remember(seg.key) { mutableStateOf<Bitmap?>(loader.cached(seg)) }
     LaunchedEffect(seg.key, targetWidth) {
         if (bitmap == null) bitmap = loader.load(seg, targetWidth)
     }
-    Box(Modifier.fillMaxWidth().aspectRatio(seg.ratio)) {
+    Box(modifier.aspectRatio(seg.ratio)) {
         val b = bitmap
         if (b != null) {
             Image(
@@ -337,19 +360,27 @@ private fun SegmentImage(seg: Segment, loader: SegmentLoader, targetWidth: Int) 
 }
 
 @Composable
-private fun ChapterEnd(chapterName: String, nextName: String?, onNext: () -> Unit, onBack: () -> Unit) {
+private fun ChapterEnd(
+    chapterName: String,
+    nextName: String?,
+    fg: Color,
+    autoNext: Boolean,
+    onNext: () -> Unit,
+    onBack: () -> Unit,
+) {
     Column(
         Modifier.fillMaxWidth().padding(vertical = 48.dp, horizontal = 24.dp).windowInsetsPadding(WindowInsets.navigationBars),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text("End of $chapterName", color = Color.White, style = MaterialTheme.typography.titleMedium)
+        Text("End of $chapterName", color = fg, style = MaterialTheme.typography.titleMedium)
         if (nextName != null) {
             GradientButton(onClick = onNext) { Text("Next: $nextName", maxLines = 1, overflow = TextOverflow.Ellipsis) }
+            if (autoNext) Text("Opening the next chapter…", color = fg.copy(alpha = 0.7f), style = MaterialTheme.typography.bodySmall)
         } else {
-            Text("You're all caught up", color = Color.White.copy(alpha = 0.7f))
+            Text("You're all caught up", color = fg.copy(alpha = 0.7f))
         }
-        OutlinedButton(onClick = onBack) { Text("Back to chapters", color = Color.White) }
+        OutlinedButton(onClick = onBack) { Text("Back to chapters", color = fg) }
         Spacer(Modifier.height(32.dp))
     }
 }

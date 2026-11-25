@@ -10,6 +10,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.withContext
 import java.io.File
+import kotlin.math.abs
 
 /**
  * One horizontal slice of a page. Long strips get cut into slices no taller than
@@ -46,7 +47,8 @@ fun buildSegments(pages: List<Triple<File, Int, Int>>): Pair<List<Segment>, IntA
     return out to starts
 }
 
-class SegmentLoader {
+/** [sharper] = resize slices to the exact display width with [Resample] instead of letting the GPU stretch them. */
+class SegmentLoader(private val sharper: Boolean = false) {
     private val maxBytes = (Runtime.getRuntime().maxMemory() / 4).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
 
     private val cache = object : LruCache<String, Bitmap>(maxBytes) {
@@ -73,7 +75,13 @@ class SegmentLoader {
     suspend fun load(seg: Segment, targetWidth: Int): Bitmap? {
         cache.get(seg.key)?.let { return it }
         return withContext(dispatcher) {
-            cache.get(seg.key) ?: runCatching { decode(seg, targetWidth) }.getOrNull()?.also { cache.put(seg.key, it) }
+            cache.get(seg.key) ?: runCatching {
+                val bmp = decode(seg, targetWidth) ?: return@runCatching null
+                if (sharper && targetWidth > 0 && abs(bmp.width - targetWidth) > 1) {
+                    val h = (bmp.height.toLong() * targetWidth / bmp.width).toInt().coerceAtLeast(1)
+                    Resample.resize(bmp, targetWidth, h)
+                } else bmp
+            }.getOrNull()?.also { cache.put(seg.key, it) }
         }
     }
 

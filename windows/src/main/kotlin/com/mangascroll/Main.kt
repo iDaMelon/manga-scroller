@@ -60,6 +60,8 @@ import kotlinx.coroutines.delay
 import java.io.File
 import java.net.URI
 
+const val APP_VERSION = "1.3"
+
 fun main() {
     // MANGASCROLL_DIR lets you keep the library somewhere else (e.g. a portable drive)
     val dir = System.getenv("MANGASCROLL_DIR")?.takeIf { it.isNotBlank() }?.let { File(it).apply { mkdirs() } }
@@ -95,7 +97,7 @@ fun runApp(vm: AppViewModel) {
         ) {
             window.minimumSize = java.awt.Dimension(720, 520)
             Pickers.owner = window
-            MangaTheme {
+            MangaTheme(vm.settings) {
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     DropZone(vm) { App(vm) }
                 }
@@ -110,6 +112,8 @@ fun App(vm: AppViewModel) {
         Screen.Home -> HomeScreen(vm)
         is Screen.Detail -> MangaScreen(vm, s.mangaId)
         is Screen.Reader -> ReaderScreen(vm, s.mangaId, s.chapterId)
+        Screen.Settings -> com.mangascroll.ui.SettingsScreen(vm)
+        is Screen.SettingsPage -> com.mangascroll.ui.SettingsPageScreen(vm, s.page)
     }
     ImportDialogs(vm)
     vm.toast?.let { msg ->
@@ -117,7 +121,8 @@ fun App(vm: AppViewModel) {
         Box(Modifier.fillMaxSize().padding(bottom = 32.dp), contentAlignment = Alignment.BottomCenter) {
             Text(
                 msg,
-                modifier = Modifier.background(Color(0xF0272734), RoundedCornerShape(50)).padding(horizontal = 20.dp, vertical = 12.dp),
+                color = MaterialTheme.colorScheme.inverseOnSurface,
+                modifier = Modifier.background(MaterialTheme.colorScheme.inverseSurface, RoundedCornerShape(50)).padding(horizontal = 20.dp, vertical = 12.dp),
             )
         }
     }
@@ -154,14 +159,15 @@ fun DropZone(vm: AppViewModel, content: @Composable () -> Unit) {
         if (hovering && vm.stack.last() !is Screen.Reader) {
             Box(
                 Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.6f)).padding(24.dp)
-                    .border(3.dp, Palette.Coral, RoundedCornerShape(28.dp)),
+                    .border(3.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(28.dp)),
                 contentAlignment = Alignment.Center,
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Rounded.Download, null, tint = Palette.Coral, modifier = Modifier.size(56.dp))
+                    Icon(Icons.Rounded.Download, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(56.dp))
                     Text(
                         if (vm.stack.last() is Screen.Detail) "Drop to add chapters" else "Drop to import",
                         style = MaterialTheme.typography.headlineSmall,
+                        color = Color.White,
                     )
                 }
             }

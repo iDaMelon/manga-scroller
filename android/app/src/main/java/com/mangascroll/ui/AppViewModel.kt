@@ -24,6 +24,8 @@ sealed interface Screen {
     data object Home : Screen
     data class Detail(val mangaId: String) : Screen
     data class Reader(val mangaId: String, val chapterId: String) : Screen
+    data object Settings : Screen
+    data class SettingsPage(val page: String) : Screen
 }
 
 data class PendingImport(
@@ -40,6 +42,7 @@ sealed interface ImportStatus {
 
 class AppViewModel(app: Application) : AndroidViewModel(app) {
     val library = Library.get(app)
+    val settings = AppSettings(app)
     private val importer = Importer(app, library)
 
     val manga = library.items
@@ -167,6 +170,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun sortChapters(mangaId: String) = viewModelScope.launch {
         library.updateManga(mangaId) { m -> m.copy(chapters = m.chapters.sortedWith(compareBy(NaturalOrder) { it.name })) }
         importer.makeCover(mangaId); coverVersion++
+    }
+
+    fun rebuildCovers() = viewModelScope.launch {
+        library.items.value.forEach { importer.makeCover(it.id) }
+        coverVersion++
     }
 
     fun reverseChapters(mangaId: String) = viewModelScope.launch {

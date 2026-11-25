@@ -208,9 +208,8 @@ private fun StatPill(text: String) {
         text,
         style = MaterialTheme.typography.labelMedium,
         color = MaterialTheme.colorScheme.onSurface,
-        modifier = Modifier.clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.08f))
-            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(50))
-            .padding(horizontal = 12.dp, vertical = 6.dp),
+        modifier = Modifier.clip(RoundedCornerShape(50)).background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            .padding(horizontal = 14.dp, vertical = 8.dp),
     )
 }
 
@@ -226,7 +225,7 @@ private fun ChapterRow(
     onDelete: () -> Unit,
 ) {
     var menu by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(16.dp)
+    val shape = RoundedCornerShape(24.dp)
     Row(
         Modifier
             .widthIn(max = 960.dp)
@@ -243,9 +242,9 @@ private fun ChapterRow(
         Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) {
             when {
                 c.read -> Box(
-                    Modifier.size(36.dp).clip(CircleShape).background(Palette.Mint.copy(alpha = 0.15f)),
+                    Modifier.size(40.dp).clip(CookieShape(9, 0.12f)).background(MaterialTheme.colorScheme.tertiaryContainer),
                     contentAlignment = Alignment.Center,
-                ) { Icon(Icons.Rounded.Check, "Read", tint = Palette.Mint, modifier = Modifier.size(20.dp)) }
+                ) { Icon(Icons.Rounded.Check, "Read", tint = MaterialTheme.colorScheme.onTertiaryContainer, modifier = Modifier.size(20.dp)) }
                 c.progress > 0f -> {
                     CircularProgressIndicator(
                         progress = { c.progress }, modifier = Modifier.size(36.dp), strokeWidth = 3.dp,
@@ -254,9 +253,9 @@ private fun ChapterRow(
                     Text("$number", style = MaterialTheme.typography.labelMedium)
                 }
                 else -> Box(
-                    Modifier.size(36.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                    Modifier.size(40.dp).clip(CookieShape(9, 0.12f)).background(MaterialTheme.colorScheme.secondaryContainer),
                     contentAlignment = Alignment.Center,
-                ) { Text("$number", style = MaterialTheme.typography.labelMedium) }
+                ) { Text("$number", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSecondaryContainer) }
             }
         }
         Column(Modifier.weight(1f).padding(start = 12.dp)) {
@@ -281,7 +280,7 @@ private fun ChapterRow(
                     Text(
                         ai,
                         style = MaterialTheme.typography.labelSmall,
-                        color = if (ai == "AI") Color.White else Palette.Amber,
+                        color = if (ai == "AI") MaterialTheme.colorScheme.onPrimary else Palette.Amber,
                         modifier = Modifier.padding(start = 8.dp).clip(RoundedCornerShape(50))
                             .background(if (ai == "AI") Palette.SunsetH else Brush.linearGradient(listOf(Palette.Amber.copy(alpha = 0.15f), Palette.Amber.copy(alpha = 0.15f))))
                             .padding(horizontal = 7.dp, vertical = 1.dp),
@@ -330,7 +329,7 @@ private fun AiCard(vm: AppViewModel, m: com.mangascroll.data.Manga) {
                         Text(
                             label,
                             style = MaterialTheme.typography.labelLarge,
-                            color = if (selected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.clip(RoundedCornerShape(50))
                                 .background(if (selected) Palette.SunsetH else Brush.linearGradient(listOf(Palette.CardHigh, Palette.CardHigh)))
                                 .clickable { vm.setEnhanceMode(m.id, mode) }

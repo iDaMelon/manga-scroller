@@ -19,6 +19,8 @@ import com.mangascroll.ui.MangaScreen
 import com.mangascroll.ui.MangaTheme
 import com.mangascroll.ui.ReaderScreen
 import com.mangascroll.ui.Screen
+import com.mangascroll.ui.SettingsPageScreen
+import com.mangascroll.ui.SettingsScreen
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -27,21 +29,23 @@ class MainActivity : ComponentActivity() {
             statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
             navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
         )
-        setContent {
-            MangaTheme {
-                Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) { App() }
-            }
-        }
+        setContent { App() }
     }
 }
 
 @Composable
 fun App(vm: AppViewModel = viewModel()) {
-    BackHandler(enabled = vm.stack.size > 1) { vm.back() }
-    when (val s = vm.stack.last()) {
-        Screen.Home -> HomeScreen(vm)
-        is Screen.Detail -> MangaScreen(vm, s.mangaId)
-        is Screen.Reader -> ReaderScreen(vm, s.mangaId, s.chapterId)
+    MangaTheme(vm.settings) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+            BackHandler(enabled = vm.stack.size > 1) { vm.back() }
+            when (val s = vm.stack.last()) {
+                Screen.Home -> HomeScreen(vm)
+                is Screen.Detail -> MangaScreen(vm, s.mangaId)
+                is Screen.Reader -> ReaderScreen(vm, s.mangaId, s.chapterId)
+                Screen.Settings -> SettingsScreen(vm)
+                is Screen.SettingsPage -> SettingsPageScreen(vm, s.page)
+            }
+            ImportDialogs(vm)
+        }
     }
-    ImportDialogs(vm)
 }

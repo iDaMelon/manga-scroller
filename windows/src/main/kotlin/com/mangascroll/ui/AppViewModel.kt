@@ -28,6 +28,8 @@ sealed interface Screen {
     data object Home : Screen
     data class Detail(val mangaId: String) : Screen
     data class Reader(val mangaId: String, val chapterId: String) : Screen
+    data object Settings : Screen
+    data class SettingsPage(val page: String) : Screen
 }
 
 data class PendingImport(
@@ -47,6 +49,7 @@ class AppViewModel(val library: Library) {
     private val importer = Importer(library)
     private val saves = mutableListOf<Job>()
     private val prefs = java.util.prefs.Preferences.userRoot().node("mangascroll")
+    val settings = AppSettings()
 
     /** Runs the AI upscaler in the background. */
     val enhancer = Enhancer(library, viewModelScope)
@@ -186,8 +189,10 @@ class AppViewModel(val library: Library) {
                             title = title.ifBlank { "Untitled" },
                             created = System.currentTimeMillis(),
                             chapters = chapters,
+                            enhance = settings.defaultEnhance,
                         )
                     }
+                    if (settings.defaultEnhance == "all") enhancer.request(mangaId, chapters.map { it.id })
                     importer.makeCover(mangaId)
                     coverVersion++
                     open(Screen.Detail(mangaId))
@@ -246,6 +251,16 @@ class AppViewModel(val library: Library) {
     fun sortChapters(mangaId: String) = viewModelScope.launch {
         library.updateManga(mangaId) { m -> m.copy(chapters = m.chapters.sortedWith(compareBy(NaturalOrder) { it.name })) }
         importer.makeCover(mangaId); coverVersion++
+    }
+
+    fun rebuildCovers() = viewModelScope.launch {
+        library.items.value.forEach { importer.makeCover(it.id) }
+        coverVersion++
+    }
+
+    fun deleteAllEnhanced() = viewModelScope.launch {
+        library.update { list -> list.map { it.copy(enhance = "off") } }
+        withContext(Dispatchers.IO) { library.items.value.forEach { enhancer.delete(it.id) } }
     }
 
     fun reverseChapters(mangaId: String) = viewModelScope.launch {

@@ -196,9 +196,8 @@ private fun StatPill(text: String) {
         text,
         style = MaterialTheme.typography.labelMedium,
         color = MaterialTheme.colorScheme.onSurface,
-        modifier = Modifier.clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.08f))
-            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(50))
-            .padding(horizontal = 12.dp, vertical = 6.dp),
+        modifier = Modifier.clip(RoundedCornerShape(50)).background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            .padding(horizontal = 14.dp, vertical = 8.dp),
     )
 }
 
@@ -213,7 +212,7 @@ private fun ChapterRow(
     onDelete: () -> Unit,
 ) {
     var menu by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(16.dp)
+    val shape = RoundedCornerShape(24.dp)
     Row(
         Modifier
             .fillMaxWidth()
@@ -229,9 +228,9 @@ private fun ChapterRow(
         Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) {
             when {
                 c.read -> Box(
-                    Modifier.size(36.dp).clip(CircleShape).background(Palette.Mint.copy(alpha = 0.15f)),
+                    Modifier.size(40.dp).clip(CookieShape(9, 0.12f)).background(MaterialTheme.colorScheme.tertiaryContainer),
                     contentAlignment = Alignment.Center,
-                ) { Icon(Icons.Rounded.Check, "Read", tint = Palette.Mint, modifier = Modifier.size(20.dp)) }
+                ) { Icon(Icons.Rounded.Check, "Read", tint = MaterialTheme.colorScheme.onTertiaryContainer, modifier = Modifier.size(20.dp)) }
                 c.progress > 0f -> {
                     CircularProgressIndicator(
                         progress = { c.progress }, modifier = Modifier.size(36.dp), strokeWidth = 3.dp,
@@ -240,9 +239,9 @@ private fun ChapterRow(
                     Text("$number", style = MaterialTheme.typography.labelMedium)
                 }
                 else -> Box(
-                    Modifier.size(36.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                    Modifier.size(40.dp).clip(CookieShape(9, 0.12f)).background(MaterialTheme.colorScheme.secondaryContainer),
                     contentAlignment = Alignment.Center,
-                ) { Text("$number", style = MaterialTheme.typography.labelMedium) }
+                ) { Text("$number", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSecondaryContainer) }
             }
         }
         Column(Modifier.weight(1f).padding(start = 12.dp)) {

@@ -13,7 +13,7 @@ java {
 }
 kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } }
 
-val appVersion = "1.2.0"
+val appVersion = "1.3.0"
 
 // Windows build: same code, but with the Windows Skia native libraries.
 val windowsRuntime: Configuration by configurations.creating {
@@ -30,6 +30,7 @@ dependencies {
     implementation(compose.materialIconsExtended)
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-swing:1.9.0")
     implementation("org.json:json:20240303")
+    implementation("com.materialkolor:material-kolor:2.0.0")
     implementation("com.twelvemonkeys.imageio:imageio-webp:3.12.0")
     implementation("com.twelvemonkeys.imageio:imageio-bmp:3.12.0")
 
@@ -89,3 +90,4 @@ val windowsJar by tasks.registering(Jar::class) {
         }
     }
 }
+
