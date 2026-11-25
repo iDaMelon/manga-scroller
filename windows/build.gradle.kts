@@ -1,3 +1,4 @@
+import java.util.zip.ZipFile
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 
 plugins {
@@ -56,13 +57,14 @@ compose.desktop {
     }
 }
 
-/** Icons referenced in the source, e.g. "rounded/Archive" for Icons.Rounded.Archive. */
+/**
+ * Icon classes the compiled app actually references, e.g. "rounded/ArchiveKt".
+ * Read from the class files (not the source) so renamed imports can't hide an icon.
+ */
 val usedIcons: Provider<Set<String>> = provider {
-    val re = Regex("""Icons\.(AutoMirrored\.)?(Rounded|Filled|Outlined|Sharp|TwoTone)\.(\w+)""")
-    fileTree("src/main/kotlin").files.flatMap { f ->
-        re.findAll(f.readText()).map { m ->
-            (if (m.groupValues[1].isNotEmpty()) "automirrored/" else "") + m.groupValues[2].lowercase() + "/" + m.groupValues[3]
-        }
+    val re = Regex("""androidx/compose/material/icons/([a-z/]+/[A-Za-z0-9_]+Kt)""")
+    sourceSets.main.get().output.classesDirs.asFileTree.matching { include("**/*.class") }.files.flatMap { f ->
+        re.findAll(String(f.readBytes(), Charsets.ISO_8859_1)).map { it.groupValues[1] }
     }.toSet()
 }
 
@@ -75,7 +77,18 @@ val windowsJar by tasks.registering(Jar::class) {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     manifest { attributes("Main-Class" to "com.mangascroll.MainKt") }
     from(sourceSets.main.get().output)
-    dependsOn(windowsRuntime)
+    dependsOn(windowsRuntime, tasks.named("classes"))
+    // the icon filter depends on the compiled classes, which Gradle doesn't see as an input
+    outputs.upToDateWhen { false }
+    // safety net: fail the build if the app references an icon that was stripped
+    doLast {
+        val jar = archiveFile.get().asFile
+        ZipFile(jar).use { z ->
+            val names = z.entries().asSequence().map { it.name }.toSet()
+            val missing = usedIcons.get().filter { "androidx/compose/material/icons/$it.class" !in names }
+            if (missing.isNotEmpty()) throw GradleException("Icons missing from ${jar.name}: $missing")
+        }
+    }
     val stripSignatures = listOf("META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA", "META-INF/versions/*/module-info.class", "module-info.class")
     from({ windowsRuntime.filter { it.name.endsWith(".jar") && !it.name.contains("material-icons-extended") }.map { zipTree(it) } }) {
         exclude(stripSignatures)
@@ -86,7 +99,7 @@ val windowsJar by tasks.registering(Jar::class) {
         include { el ->
             val path = el.path
             el.isDirectory || !path.startsWith("androidx/compose/material/icons/") ||
-                usedIcons.get().any { path.startsWith("androidx/compose/material/icons/${it}Kt") }
+                usedIcons.get().any { path.startsWith("androidx/compose/material/icons/$it") }
         }
     }
 }
